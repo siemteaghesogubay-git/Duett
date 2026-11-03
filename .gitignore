@@ -1,0 +1,15 @@
+# Byggfiler
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Lokala inställningar och hemligheter
+.env
+secrets.json
+
+# Lokala verifieringsmeddelanden
+App_Data/
