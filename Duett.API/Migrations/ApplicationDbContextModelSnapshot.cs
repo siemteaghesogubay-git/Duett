@@ -119,6 +119,37 @@ namespace Duett.API.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("Duett.API.Models.ChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("MatchId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SenderUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SenderUserId");
+
+                    b.HasIndex("MatchId", "CreatedAtUtc", "Id");
+
+                    b.ToTable("ChatMessages");
+                });
+
             modelBuilder.Entity("Duett.API.Models.GameQuestion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -232,6 +263,61 @@ namespace Duett.API.Migrations
                     b.ToTable("GameRoundSubmissions");
                 });
 
+            modelBuilder.Entity("Duett.API.Models.MatchQuestion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AnswerText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("AnsweredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("AnsweredByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("AskedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("MatchId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("QuestionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AnsweredByUserId");
+
+                    b.HasIndex("AskedByUserId");
+
+                    b.HasIndex("MatchId", "AskedByUserId", "QuestionNumber")
+                        .IsUnique();
+
+                    b.ToTable("MatchQuestions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MatchQuestions_AnswerState", "([AnswerText] IS NULL AND [AnsweredByUserId] IS NULL AND [AnsweredAtUtc] IS NULL) OR ([AnswerText] IS NOT NULL AND [AnsweredByUserId] IS NOT NULL AND [AnsweredAtUtc] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_MatchQuestions_NoSelfAnswer", "[AnsweredByUserId] IS NULL OR [AnsweredByUserId] <> [AskedByUserId]");
+
+                            t.HasCheckConstraint("CK_MatchQuestions_QuestionNumber", "[QuestionNumber] BETWEEN 1 AND 3");
+                        });
+                });
+
             modelBuilder.Entity("Duett.API.Models.PartnerPreferences", b =>
                 {
                     b.Property<string>("UserId")
@@ -253,6 +339,10 @@ namespace Duett.API.Migrations
 
                     b.Property<string>("RelationshipGoal")
                         .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("RelationshipMode")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
@@ -284,6 +374,39 @@ namespace Duett.API.Migrations
                     b.ToTable("ProfileLikes", null, t =>
                         {
                             t.HasCheckConstraint("CK_ProfileLikes_NoSelfLike", "[FromUserId] <> [ToUserId]");
+                        });
+                });
+
+            modelBuilder.Entity("Duett.API.Models.ProfilePhoto", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("UploadedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.ToTable("ProfilePhotos", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProfilePhotos_SizeBytes", "[SizeBytes] > 0");
                         });
                 });
 
@@ -464,6 +587,25 @@ namespace Duett.API.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Duett.API.Models.ChatMessage", b =>
+                {
+                    b.HasOne("Duett.API.Models.UserMatch", "Match")
+                        .WithMany()
+                        .HasForeignKey("MatchId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Duett.API.Models.ApplicationUser", "SenderUser")
+                        .WithMany()
+                        .HasForeignKey("SenderUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Match");
+
+                    b.Navigation("SenderUser");
+                });
+
             modelBuilder.Entity("Duett.API.Models.GameQuestionOption", b =>
                 {
                     b.HasOne("Duett.API.Models.GameQuestion", "Question")
@@ -529,6 +671,32 @@ namespace Duett.API.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Duett.API.Models.MatchQuestion", b =>
+                {
+                    b.HasOne("Duett.API.Models.ApplicationUser", "AnsweredByUser")
+                        .WithMany()
+                        .HasForeignKey("AnsweredByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Duett.API.Models.ApplicationUser", "AskedByUser")
+                        .WithMany()
+                        .HasForeignKey("AskedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Duett.API.Models.UserMatch", "Match")
+                        .WithMany()
+                        .HasForeignKey("MatchId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("AnsweredByUser");
+
+                    b.Navigation("AskedByUser");
+
+                    b.Navigation("Match");
+                });
+
             modelBuilder.Entity("Duett.API.Models.PartnerPreferences", b =>
                 {
                     b.HasOne("Duett.API.Models.ApplicationUser", "User")
@@ -557,6 +725,17 @@ namespace Duett.API.Migrations
                     b.Navigation("FromUser");
 
                     b.Navigation("ToUser");
+                });
+
+            modelBuilder.Entity("Duett.API.Models.ProfilePhoto", b =>
+                {
+                    b.HasOne("Duett.API.Models.ApplicationUser", "User")
+                        .WithOne()
+                        .HasForeignKey("Duett.API.Models.ProfilePhoto", "UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Duett.API.Models.UserMatch", b =>

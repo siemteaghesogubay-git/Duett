@@ -24,6 +24,13 @@ public class PartnerPreferencesService : IPartnerPreferencesService
         "Dejting"
     };
 
+    private static readonly string[] AllowedRelationshipModes =
+    {
+        "Distans",
+        "Träffas fysiskt",
+        "Öppen för båda"
+    };
+
     public PartnerPreferencesService(
         IPartnerPreferencesRepository repository)
     {
@@ -107,6 +114,20 @@ public class PartnerPreferencesService : IPartnerPreferencesService
                 "Välj Seriöst förhållande eller Dejting som relationsmål.");
         }
 
+        // Trimma och normalisera till ett av de tillåtna värdena.
+        var relationshipMode = AllowedRelationshipModes.FirstOrDefault(
+            allowed => string.Equals(
+                allowed,
+                dto.RelationshipMode?.Trim(),
+                StringComparison.OrdinalIgnoreCase));
+
+        if (relationshipMode is null)
+        {
+            throw new ValidationException(
+                "Välj Distans, Träffas fysiskt eller " +
+                "Öppen för båda som relationsform.");
+        }
+
         var preferredCity = string.IsNullOrWhiteSpace(dto.PreferredCity)
             ? null
             : dto.PreferredCity.Trim();
@@ -130,7 +151,8 @@ public class PartnerPreferencesService : IPartnerPreferencesService
                 MaxAge = maxAge,
                 PreferredGenders = preferredGenders,
                 PreferredCity = preferredCity,
-                RelationshipGoal = relationshipGoal
+                RelationshipGoal = relationshipGoal,
+                RelationshipMode = relationshipMode
             };
 
             await _repository.AddAsync(
@@ -145,6 +167,7 @@ public class PartnerPreferencesService : IPartnerPreferencesService
         preferences.PreferredGenders = preferredGenders;
         preferences.PreferredCity = preferredCity;
         preferences.RelationshipGoal = relationshipGoal;
+        preferences.RelationshipMode = relationshipMode;
 
         await _repository.SaveChangesAsync(cancellationToken);
     }
@@ -158,7 +181,8 @@ public class PartnerPreferencesService : IPartnerPreferencesService
             MaxAge = preferences.MaxAge,
             PreferredGenders = preferences.PreferredGenders.ToList(),
             PreferredCity = preferences.PreferredCity,
-            RelationshipGoal = preferences.RelationshipGoal
+            RelationshipGoal = preferences.RelationshipGoal,
+            RelationshipMode = preferences.RelationshipMode
         };
     }
 }

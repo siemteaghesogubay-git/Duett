@@ -12,5 +12,9 @@ public class UserMatchDetails
 
     public string City { get; set; } = string.Empty;
 
+    public string? RelationshipMode { get; set; }
+
+    public int MyCorrectGuessCount { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 }

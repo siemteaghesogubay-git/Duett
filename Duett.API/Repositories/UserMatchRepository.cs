@@ -91,13 +91,11 @@ public class UserMatchRepository : IUserMatchRepository
         }
     }
 
-
-
-        public async Task<List<UserMatchDetails>> GetForUserAsync(
-    string userId,
-    int skip,
-    int take,
-    CancellationToken cancellationToken = default)
+    public async Task<List<UserMatchDetails>> GetForUserAsync(
+        string userId,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
@@ -127,7 +125,31 @@ public class UserMatchRepository : IUserMatchRepository
                 DisplayName = profile.DisplayName,
                 DateOfBirth = profile.DateOfBirth,
                 City = profile.City,
-                CreatedAtUtc = match.CreatedAtUtc
+                CreatedAtUtc = match.CreatedAtUtc,
+
+                // Saknade partnerönskemål ger null.
+                RelationshipMode = _context.PartnerPreferences
+                    .Where(preferences =>
+                        preferences.UserId == otherUserId)
+                    .Select(preferences =>
+                        preferences.RelationshipMode)
+                    .FirstOrDefault(),
+
+                // Bara mina rätta gissningar i avslutade rundor
+                // för den aktuella matchningen räknas.
+                MyCorrectGuessCount = _context.GameRoundSubmissions
+                    .Count(submission =>
+                        submission.UserId == userId
+                        && submission.Round.MatchId == match.Id
+                        && submission.Round.CompletedAtUtc != null
+                        && _context.GameRoundSubmissions.Any(
+                            partnerSubmission =>
+                                partnerSubmission.RoundId
+                                    == submission.RoundId
+                                && partnerSubmission.UserId
+                                    == otherUserId
+                                && partnerSubmission.AnswerOptionId
+                                    == submission.GuessOptionId))
             };
 
         return await query

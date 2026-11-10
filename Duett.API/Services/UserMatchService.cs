@@ -53,8 +53,19 @@ public class UserMatchService : IUserMatchService
             MatchId = match.MatchId,
             OtherUserId = match.OtherUserId,
             DisplayName = match.DisplayName,
-            Age = CalculateAge(match.DateOfBirth, today),
-            City = match.City,
+
+            Age = match.MyCorrectGuessCount >= 1
+                ? CalculateAge(match.DateOfBirth, today)
+                : null,
+
+            City = match.MyCorrectGuessCount >= 2
+                ? match.City
+                : null,
+
+            RelationshipMode = match.MyCorrectGuessCount >= 3
+                ? match.RelationshipMode
+                : null,
+
             CreatedAtUtc = match.CreatedAtUtc
         }).ToList();
     }

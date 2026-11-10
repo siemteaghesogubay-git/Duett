@@ -1,6 +1,5 @@
 ﻿using Duett.API.Dtos;
 using Duett.API.Models;
-using Duett.API.Services;
 using Duett.API.Services.IServices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -59,7 +58,8 @@ public class GamesController : ControllerBase
                 return Problem(
                     statusCode: StatusCodes.Status409Conflict,
                     title: "Spelet är redan avslutat.",
-                    detail: "Ni har avslutat tre rundor.");
+                    detail:
+                        "Båda deltagarna har minst tre rätta gissningar.");
 
             default:
                 throw new InvalidOperationException(
@@ -94,12 +94,11 @@ public class GamesController : ControllerBase
         return Ok(round);
     }
 
-
     [HttpPost("rounds/{roundId:guid}/submissions")]
     public async Task<IActionResult> Submit(
-    Guid roundId,
-    [FromBody] SubmitGameRoundDto dto,
-    CancellationToken cancellationToken)
+        Guid roundId,
+        [FromBody] SubmitGameRoundDto dto,
+        CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -149,11 +148,10 @@ public class GamesController : ControllerBase
         }
     }
 
-
     [HttpGet("rounds/{roundId:guid}/result")]
     public async Task<ActionResult<GameRoundResultDto>> GetResult(
-    Guid roundId,
-    CancellationToken cancellationToken)
+        Guid roundId,
+        CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -191,16 +189,10 @@ public class GamesController : ControllerBase
         }
     }
 
-
-
-
-
-
-    [Authorize]
     [HttpGet("matches/{matchId:guid}/progress")]
-    public async Task<IActionResult> GetProgress(
-    Guid matchId,
-    CancellationToken cancellationToken)
+    public async Task<ActionResult<GameProgressResponseDto>> GetProgress(
+        Guid matchId,
+        CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -208,6 +200,7 @@ public class GamesController : ControllerBase
         {
             return Unauthorized();
         }
+
         var progress = await _service.GetProgressAsync(
             matchId,
             userId,

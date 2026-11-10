@@ -26,9 +26,12 @@ public class SavePartnerPreferencesDto
     [StringLength(50,
         ErrorMessage = "Relationsmålet får innehålla högst 50 tecken.")]
     public string RelationshipGoal { get; set; } = string.Empty;
-}
 
-// response DTO for returning partner preferences data
+    [Required(ErrorMessage = "Relationsform krävs.")]
+    [StringLength(50,
+        ErrorMessage = "Relationsformen får innehålla högst 50 tecken.")]
+    public string RelationshipMode { get; set; } = string.Empty;
+}
 
 public class PartnerPreferencesResponseDto
 {
@@ -41,4 +44,8 @@ public class PartnerPreferencesResponseDto
     public string? PreferredCity { get; set; }
 
     public string RelationshipGoal { get; set; } = string.Empty;
+
+    public string? RelationshipMode { get; set; }
+
+
 }

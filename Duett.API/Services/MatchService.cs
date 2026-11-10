@@ -52,25 +52,7 @@ public class MatchService : IMatchService
         return profiles.Select(profile => new MatchSuggestionDto
         {
             UserId = profile.UserId,
-            DisplayName = profile.DisplayName,
-            Age = CalculateAge(profile.DateOfBirth, today),
-            City = profile.City
+            DisplayName = profile.DisplayName
         }).ToList();
-    }
-
-    private static int CalculateAge(
-        DateOnly dateOfBirth,
-        DateOnly today)
-    {
-        var age = today.Year - dateOfBirth.Year;
-
-        if (dateOfBirth.Month > today.Month ||
-            (dateOfBirth.Month == today.Month &&
-             dateOfBirth.Day > today.Day))
-        {
-            age--;
-        }
-
-        return age;
     }
 }

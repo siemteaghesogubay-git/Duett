@@ -32,6 +32,9 @@ public class ApplicationDbContext
     public DbSet<GameRoundSubmission> GameRoundSubmissions
         => Set<GameRoundSubmission>();
 
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<MatchQuestion> MatchQuestions => Set<MatchQuestion>();
+    public DbSet<ProfilePhoto> ProfilePhotos => Set<ProfilePhoto>();
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -262,5 +265,168 @@ public class ApplicationDbContext
                 .HasForeignKey(s => s.GuessOptionId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
+
+        builder.Entity<ChatMessage>(message =>
+        {
+            message.HasKey(m => m.Id);
+
+            message.Property(m => m.SenderUserId)
+                .HasMaxLength(450)
+                .IsRequired();
+
+            message.Property(m => m.Text)
+                .HasMaxLength(2000)
+                .IsRequired();
+
+            message.HasOne(m => m.Match)
+                .WithMany()
+                .HasForeignKey(m => m.MatchId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            message.HasOne(m => m.SenderUser)
+                .WithMany()
+                .HasForeignKey(m => m.SenderUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            // Underlättar hämtning av meddelanden i en matchning
+            // med stabil sortering på tid och ID.
+            message.HasIndex(m => new
+            {
+                m.MatchId,
+                m.CreatedAtUtc,
+                m.Id
+            });
+        }); builder.Entity<ChatMessage>(message =>
+        {
+            message.HasKey(m => m.Id);
+
+            message.Property(m => m.SenderUserId)
+                .HasMaxLength(450)
+                .IsRequired();
+
+            message.Property(m => m.Text)
+                .HasMaxLength(2000)
+                .IsRequired();
+
+            message.HasOne(m => m.Match)
+                .WithMany()
+                .HasForeignKey(m => m.MatchId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            message.HasOne(m => m.SenderUser)
+                .WithMany()
+                .HasForeignKey(m => m.SenderUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            // Underlättar hämtning av meddelanden i en matchning
+            // med stabil sortering på tid och ID.
+            message.HasIndex(m => new
+            {
+                m.MatchId,
+                m.CreatedAtUtc,
+                m.Id
+            });
+        });
+
+        builder.Entity<MatchQuestion>(question =>
+        {
+            question.HasKey(q => q.Id);
+
+            question.Property(q => q.AskedByUserId)
+                .HasMaxLength(450)
+                .IsRequired();
+
+            question.Property(q => q.AnsweredByUserId)
+                .HasMaxLength(450);
+
+            question.Property(q => q.Text)
+                .HasMaxLength(300)
+                .IsRequired();
+
+            question.Property(q => q.AnswerText)
+                .HasMaxLength(2000);
+
+            question.HasOne(q => q.Match)
+                .WithMany()
+                .HasForeignKey(q => q.MatchId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            question.HasOne(q => q.AskedByUser)
+                .WithMany()
+                .HasForeignKey(q => q.AskedByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            question.HasOne(q => q.AnsweredByUser)
+                .WithMany()
+                .HasForeignKey(q => q.AnsweredByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            // Varje person kan ha högst tre numrerade frågor
+            // i samma matchning.
+            question.HasIndex(q => new
+            {
+                q.MatchId,
+                q.AskedByUserId,
+                q.QuestionNumber
+            }).IsUnique();
+
+            question.ToTable("MatchQuestions", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_MatchQuestions_QuestionNumber",
+                    "[QuestionNumber] BETWEEN 1 AND 3");
+
+                table.HasCheckConstraint(
+                    "CK_MatchQuestions_NoSelfAnswer",
+                    "[AnsweredByUserId] IS NULL " +
+                    "OR [AnsweredByUserId] <> [AskedByUserId]");
+
+                // Alla svarsfält är antingen tomma eller ifyllda tillsammans.
+                table.HasCheckConstraint(
+                    "CK_MatchQuestions_AnswerState",
+                    "([AnswerText] IS NULL " +
+                    "AND [AnsweredByUserId] IS NULL " +
+                    "AND [AnsweredAtUtc] IS NULL) " +
+                    "OR " +
+                    "([AnswerText] IS NOT NULL " +
+                    "AND [AnsweredByUserId] IS NOT NULL " +
+                    "AND [AnsweredAtUtc] IS NOT NULL)");
+            });
+        });
+
+
+
+        builder.Entity<ProfilePhoto>(photo =>
+        {
+            photo.HasKey(p => p.UserId);
+
+            photo.Property(p => p.UserId)
+                .HasMaxLength(450)
+                .IsRequired();
+
+            photo.Property(p => p.StorageKey)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            photo.Property(p => p.ContentType)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            photo.HasOne(p => p.User)
+                .WithOne()
+                .HasForeignKey<ProfilePhoto>(p => p.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            photo.HasIndex(p => p.StorageKey)
+                .IsUnique();
+
+            photo.ToTable("ProfilePhotos", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_ProfilePhotos_SizeBytes",
+                    "[SizeBytes] > 0");
+            });
+        });
+
     }
 }

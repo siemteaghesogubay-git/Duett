@@ -20,4 +20,9 @@ public class PartnerPreferences
 
     [MaxLength(50)]
     public string RelationshipGoal { get; set; } = string.Empty;
+
+    // Distans, Träffas fysiskt eller Öppen för båda.
+    // Null betyder att användaren ännu inte har valt.
+    [MaxLength(50)]
+    public string? RelationshipMode { get; set; }
 }

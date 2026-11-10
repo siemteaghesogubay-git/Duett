@@ -1,17 +1,19 @@
-using System.Security.Claims;
-using System.Threading.RateLimiting;
 using Duett.API.Data;
 using Duett.API.Models;
 using Duett.API.Repositories;
 using Duett.API.Repositories.IRepositories;
 using Duett.API.Services;
 using Duett.API.Services.IServices;
+using Duett.API.Storage;
+using Duett.API.Storage.IStorage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
+using System.Security.Claims;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -64,6 +66,14 @@ builder.Services.AddScoped<IMatchService, MatchService>();
 builder.Services.AddScoped<IProfileLikeService, ProfileLikeService>();
 builder.Services.AddScoped<IUserMatchService, UserMatchService>();
 builder.Services.AddScoped<IGameService, GameService>();
+builder.Services.AddScoped<IChatService, ChatService>();
+builder.Services.AddScoped<IMatchQuestionService, MatchQuestionService>();
+builder.Services.AddScoped<IProfilePhotoProcessor, ProfilePhotoProcessor>();
+builder.Services.AddScoped<IProfilePhotoService, ProfilePhotoService>();
+
+
+//Storage
+builder.Services.AddScoped< IPrivatePhotoStorage,LocalPrivatePhotoStorage>();
 
 
 // Repositories.
@@ -77,6 +87,9 @@ builder.Services.AddScoped<IMatchRepository, MatchRepository>();
 builder.Services.AddScoped<IProfileLikeRepository, ProfileLikeRepository>();
 builder.Services.AddScoped<   IUserMatchRepository,UserMatchRepository>();
 builder.Services.AddScoped<IGameRepository, GameRepository>();
+builder.Services.AddScoped<IChatRepository, ChatRepository>();
+builder.Services.AddScoped<IMatchQuestionRepository, MatchQuestionRepository>();
+builder.Services.AddScoped<IProfilePhotoRepository, ProfilePhotoRepository>();
 
 
 // JWT-inställningar från User Secrets.
