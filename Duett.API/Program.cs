@@ -61,7 +61,9 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmailService, DevelopmentEmailService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
-builder.Services.AddScoped< IPartnerPreferencesService,PartnerPreferencesService>();
+builder.Services.AddScoped<
+    IPartnerPreferencesService,
+    PartnerPreferencesService>();
 builder.Services.AddScoped<IMatchService, MatchService>();
 builder.Services.AddScoped<IProfileLikeService, ProfileLikeService>();
 builder.Services.AddScoped<IUserMatchService, UserMatchService>();
@@ -71,28 +73,31 @@ builder.Services.AddScoped<IMatchQuestionService, MatchQuestionService>();
 builder.Services.AddScoped<IProfilePhotoProcessor, ProfilePhotoProcessor>();
 builder.Services.AddScoped<IProfilePhotoService, ProfilePhotoService>();
 
-
-//Storage
-builder.Services.AddScoped< IPrivatePhotoStorage,LocalPrivatePhotoStorage>();
-
+// Privat bildlagring.
+builder.Services.AddScoped<
+    IPrivatePhotoStorage,
+    LocalPrivatePhotoStorage>();
 
 // Repositories.
 builder.Services.AddScoped<
     IUserProfileRepository,
     UserProfileRepository>();
 builder.Services.AddScoped<
- IPartnerPreferencesRepository,
- PartnerPreferencesRepository>();
+    IPartnerPreferencesRepository,
+    PartnerPreferencesRepository>();
 builder.Services.AddScoped<IMatchRepository, MatchRepository>();
 builder.Services.AddScoped<IProfileLikeRepository, ProfileLikeRepository>();
-builder.Services.AddScoped<   IUserMatchRepository,UserMatchRepository>();
+builder.Services.AddScoped<IUserMatchRepository, UserMatchRepository>();
 builder.Services.AddScoped<IGameRepository, GameRepository>();
 builder.Services.AddScoped<IChatRepository, ChatRepository>();
-builder.Services.AddScoped<IMatchQuestionRepository, MatchQuestionRepository>();
-builder.Services.AddScoped<IProfilePhotoRepository, ProfilePhotoRepository>();
+builder.Services.AddScoped<
+    IMatchQuestionRepository,
+    MatchQuestionRepository>();
+builder.Services.AddScoped<
+    IProfilePhotoRepository,
+    ProfilePhotoRepository>();
 
-
-// JWT-inställningar från User Secrets.
+// JWT-inställningar från konfigurationen, exempelvis User Secrets.
 var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
@@ -159,6 +164,19 @@ builder.Services.AddAuthorization();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
+// Tillåt anrop från React-appen.
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
+// Begränsa förfrågningar till lösenordsåterställningen.
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode =
@@ -190,7 +208,9 @@ app.UseHttpsRedirection();
 
 app.UseRouting();
 
-// Identifiera användaren före behörighetskontrollen.
+// CORS ligger före autentisering och behörighetskontroll.
+app.UseCors("Frontend");
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -198,9 +218,10 @@ app.UseRateLimiter();
 
 app.MapControllers();
 
-
+// Skapa roller om de saknas.
 await IdentitySeeder.SeedRolesAsync(app.Services);
 
+// Lägg till spelfrågor i utvecklingsmiljön.
 if (app.Environment.IsDevelopment())
 {
     await GameQuestionSeeder.SeedAsync(app.Services);

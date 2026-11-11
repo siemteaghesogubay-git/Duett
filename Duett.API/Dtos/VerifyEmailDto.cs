@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
+
 namespace Duett.API.Dtos;
 
 public class VerifyEmailDto
