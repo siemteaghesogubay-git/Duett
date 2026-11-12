@@ -1,81 +1,65 @@
-name: Build and deploy DuettBackend
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+
+name: Build and deploy ASP.Net Core app to Azure Web App - DuettBackend
 
 on:
   push:
     branches:
-      - main
+      - 'main'
   workflow_dispatch:
-
-concurrency:
-  group: duettbackend-production
-  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: windows-latest
-
     permissions:
-      contents: read
+      contents: read #This is required for actions/checkout
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up .NET
+      - name: Set up .NET Core
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.x'
 
-      - name: Publish API
-        run: >
-          dotnet publish ./Duett.API/Duett.API.csproj
-          --configuration Release
-          --runtime win-x64
-          --self-contained false
-          --output ./publish
+      - name: Build with dotnet
+        run: dotnet build --configuration Release
 
-      - name: Upload artifact
+      - name: dotnet publish
+        run: dotnet publish -c Release -o "${{env.DOTNET_ROOT}}/myapp"
+
+      - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
-          name: duett-api
-          path: ./publish
-          if-no-files-found: error
-          retention-days: 3
+          name: .net-app
+          path: ${{env.DOTNET_ROOT}}/myapp
 
   deploy:
     runs-on: windows-latest
     needs: build
-
     permissions:
-      id-token: write
-      contents: read
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
 
     steps:
-      - name: Download artifact
+      - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
-          name: duett-api
-          path: ./publish
-
+          name: .net-app
+      
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_5371AE4DA1AD41C9AF5FD502FC07DDF1 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7164A07E75AE467E8A5BE890012E34C8 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_96CA41E820FA4A749AAED14592778CD6 }}
-
-      - name: Check Azure access
-        shell: pwsh
-        run: |
-          az account show --query "{subscription:name, subscriptionId:id, tenantId:tenantId, identity:user.name}" --output json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-          az webapp show --resource-group Duett --name DuettBackend --subscription 92cdaf67-c570-43b3-826e-19d7e295ed80 --query "{name:name, resourceGroup:resourceGroup, state:state}" --output json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_9191D6B2465E4542AEFC3A4697928A5B }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_836F7974E19F4DE699D3079836CC8703 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_528CAA9444AB413FBDB2318636C78325 }}
 
       - name: Deploy to Azure Web App
+        id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: DuettBackend
-          slot-name: Production
-          package: ./publish
+          app-name: 'DuettBackend'
+          slot-name: 'Production'
+          package: .
+          
