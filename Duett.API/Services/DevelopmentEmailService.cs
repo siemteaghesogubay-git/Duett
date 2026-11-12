@@ -6,30 +6,24 @@ namespace Duett.API.Services;
 public class DevelopmentEmailService : IEmailService
 {
     private readonly IWebHostEnvironment _environment;
+    private readonly IConfiguration _configuration;
 
-    public DevelopmentEmailService(IWebHostEnvironment environment)
+    public DevelopmentEmailService(
+        IWebHostEnvironment environment,
+        IConfiguration configuration)
     {
         _environment = environment;
+        _configuration = configuration;
     }
 
-    public Task SendVerificationAsync(
-        string email,
-        string token)
+    public Task SendVerificationAsync(string email, string token)
     {
-        return SaveMessageAsync(
-            email,
-            token,
-            "verify-email");
+        return SaveMessageAsync(email, token, "verify-email");
     }
 
-    public Task SendPasswordResetAsync(
-        string email,
-        string token)
+    public Task SendPasswordResetAsync(string email, string token)
     {
-        return SaveMessageAsync(
-            email,
-            token,
-            "reset-password");
+        return SaveMessageAsync(email, token, "reset-password");
     }
 
     private async Task SaveMessageAsync(
@@ -37,7 +31,12 @@ public class DevelopmentEmailService : IEmailService
         string token,
         string filePrefix)
     {
-        if (!_environment.IsDevelopment())
+        var allowFileDelivery = string.Equals(
+            _configuration["Email:AllowFileDelivery"],
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (!_environment.IsDevelopment() && !allowFileDelivery)
         {
             throw new InvalidOperationException(
                 "En riktig e-posttjänst måste konfigureras.");
