@@ -197,6 +197,27 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+
+
+// Hantera avbrutna HTTP-anrop.
+// TaskCanceledException ärver från OperationCanceledException.
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next(context);
+    }
+    catch (OperationCanceledException)
+        when (context.RequestAborted.IsCancellationRequested)
+    {
+        // Klienten har avbrutit anropet.
+        // Försök inte skriva något svar till den.
+        app.Logger.LogDebug(
+            "Klienten avbröt anropet till {Path}.",
+            context.Request.Path);
+    }
+});
+
 // API-dokumentation visas bara i utvecklingsmiljön.
 if (app.Environment.IsDevelopment())
 {

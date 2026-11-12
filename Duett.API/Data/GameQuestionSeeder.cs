@@ -18,146 +18,187 @@ public static class GameQuestionSeeder
         {
             CreateQuestion(
                 Guid.Parse("11111111-1111-4111-8111-111111111111"),
-                "Vilken är min perfekta dejt?",
-                "Middag på restaurang",
-                "En promenad och fika",
-                "En konsert",
-                "En spelkväll"),
+                "What is my perfect date?",
+                "Dinner at a restaurant",
+                "A walk and coffee",
+                "A concert",
+                "A game night"),
 
             CreateQuestion(
                 Guid.Parse("22222222-2222-4222-8222-222222222222"),
-                "Hur tillbringar jag helst en ledig söndag?",
-                "Tar det lugnt hemma",
-                "Umgås med vänner",
-                "Är ute i naturen",
-                "Upptäcker en ny plats"),
+                "How do I prefer to spend a free Sunday?",
+                "Relaxing at home",
+                "Spending time with friends",
+                "Being out in nature",
+                "Discovering a new place"),
 
             CreateQuestion(
                 Guid.Parse("33333333-3333-4333-8333-333333333333"),
-                "Vilken sorts resa väljer jag helst?",
-                "Sol och bad",
-                "En storstadshelg",
-                "Vandring och äventyr",
-                "En lugn stuga"),
+                "What kind of trip would I choose?",
+                "Sun and swimming",
+                "A city weekend",
+                "Hiking and adventure",
+                "A peaceful cabin getaway"),
 
             CreateQuestion(
                 Guid.Parse("44444444-4444-4444-8444-444444444444"),
-                "Vad lagar jag helst tillsammans med någon?",
-                "Hemmagjord pizza",
+                "What would I most like to cook with someone?",
+                "Homemade pizza",
                 "Pasta",
-                "En ny maträtt",
-                "En efterrätt"),
+                "A new dish",
+                "A dessert"),
 
             CreateQuestion(
                 Guid.Parse("55555555-5555-4555-8555-555555555555"),
-                "Vilken film väljer jag helst?",
-                "Komedi",
+                "What kind of movie would I choose?",
+                "Comedy",
                 "Thriller",
-                "Romantik",
+                "Romance",
                 "Science fiction"),
 
             CreateQuestion(
                 Guid.Parse("66666666-6666-4666-8666-666666666666"),
-                "Vilken överraskning uppskattar jag mest?",
-                "Ett personligt meddelande",
-                "En planerad utflykt",
-                "Min favoritmat",
-                "En liten genomtänkt present"),
+                "What kind of surprise would I appreciate most?",
+                "A personal message",
+                "A planned outing",
+                "My favourite food",
+                "A small, thoughtful gift"),
 
             CreateQuestion(
                 Guid.Parse("77777777-7777-4777-8777-777777777777"),
-                "Hur planerar jag helst en helg?",
-                "Planerar allt i förväg",
-                "Bestämmer spontant",
-                "Planerar en sak och lämnar resten öppet",
-                "Låter någon annan föreslå något"),
+                "How do I prefer to plan a weekend?",
+                "Plan everything in advance",
+                "Decide spontaneously",
+                "Plan one thing and leave the rest open",
+                "Let someone else suggest something"),
 
             CreateQuestion(
                 Guid.Parse("88888888-8888-4888-8888-888888888888"),
-                "Vad vill jag helst prova tillsammans?",
-                "En danskurs",
-                "En matlagningskurs",
-                "Klättring",
-                "En kreativ workshop"),
+                "What would I most like to try together?",
+                "A dance class",
+                "A cooking class",
+                "Climbing",
+                "A creative workshop"),
 
             CreateQuestion(
                 Guid.Parse("99999999-9999-4999-8999-999999999999"),
-                "Vilket sällskapsspel väljer jag helst?",
-                "Frågesport",
-                "Strategispel",
-                "Kortspel",
-                "Ett samarbetsspel"),
+                "What kind of game would I choose?",
+                "A trivia game",
+                "A strategy game",
+                "A card game",
+                "A cooperative game"),
 
             CreateQuestion(
                 Guid.Parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
-                "Vilken miljö får mig att slappna av mest?",
-                "Vid havet",
-                "I skogen",
-                "På ett mysigt kafé",
-                "Hemma i soffan"),
+                "Where do I feel most relaxed?",
+                "By the sea",
+                "In the forest",
+                "At a cosy café",
+                "On the sofa at home"),
 
             CreateQuestion(
                 Guid.Parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
-                "Vad uppskattar jag mest i ett samtal?",
-                "Humor och skratt",
-                "Djupa funderingar",
-                "Berättelser från vardagen",
-                "Idéer och framtidsdrömmar"),
+                "What do I appreciate most in a conversation?",
+                "Humour and laughter",
+                "Deep reflections",
+                "Stories from everyday life",
+                "Ideas and dreams for the future"),
 
             CreateQuestion(
                 Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
-                "Hur börjar jag helst en ledig morgon?",
-                "Med en lång frukost",
-                "Med en promenad",
-                "Med träning",
-                "Med sovmorgon"),
+                "How do I prefer to start a morning off?",
+                "With a leisurely breakfast",
+                "With a walk",
+                "With a workout",
+                "By sleeping in"),
 
             CreateQuestion(
                 Guid.Parse("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
-                "Vad gör jag helst en regnig dag?",
-                "Läser en bok",
-                "Ser på film eller en serie",
-                "Bakar något",
-                "Besöker ett museum"),
+                "What do I prefer to do on a rainy day?",
+                "Read a book",
+                "Watch a movie or a series",
+                "Bake something",
+                "Visit a museum"),
 
             CreateQuestion(
                 Guid.Parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"),
-                "Vilken musikupplevelse väljer jag helst?",
-                "En stor konsert",
-                "En liten akustisk spelning",
-                "En kväll med dans",
-                "Lyssna på favoritlåtar hemma"),
+                "What kind of music experience would I choose?",
+                "A big concert",
+                "A small acoustic gig",
+                "A night of dancing",
+                "Listening to favourite songs at home"),
 
             CreateQuestion(
                 Guid.Parse("ffffffff-ffff-4fff-8fff-ffffffffffff"),
-                "Vad gör jag helst på en gemensam utflykt?",
-                "Har picknick",
-                "Fotograferar omgivningen",
-                "Utforskar nya promenadstråk",
-                "Besöker en lokal marknad")
+                "What do I most enjoy doing on an outing together?",
+                "Having a picnic",
+                "Taking photos of the surroundings",
+                "Exploring new walking routes",
+                "Visiting a local market")
         };
 
         var questionIds = questions
             .Select(question => question.Id)
             .ToArray();
 
-        var existingIds = await context.GameQuestions
-            .AsNoTracking()
+        // Hämta befintliga frågor med deras alternativ.
+        // Spårning behövs för att spara textändringarna.
+        var existingQuestions = await context.GameQuestions
+            .AsTracking()
+            .Include(question => question.Options)
             .Where(question => questionIds.Contains(question.Id))
-            .Select(question => question.Id)
-            .ToListAsync(cancellationToken);
+            .ToDictionaryAsync(
+                question => question.Id,
+                cancellationToken);
 
-        var existingIdSet = existingIds.ToHashSet();
-
-        foreach (var question in questions)
+        foreach (var seedQuestion in questions)
         {
-            // Befintliga frågor och deras alternativ lämnas orörda.
-            if (existingIdSet.Contains(question.Id))
+            if (!existingQuestions.TryGetValue(
+                    seedQuestion.Id,
+                    out var existingQuestion))
             {
+                // Endast nya frågor får nya alternativ-ID:n.
+                context.GameQuestions.Add(seedQuestion);
                 continue;
             }
 
-            context.GameQuestions.Add(question);
+            var existingOptions = existingQuestion.Options
+                .OrderBy(option => option.SortOrder)
+                .ToList();
+
+            var seedOptions = seedQuestion.Options
+                .OrderBy(option => option.SortOrder)
+                .ToList();
+
+            // Den ursprungliga seedern använder ordningen 1–4.
+            // Stoppa om strukturen avviker så att vi inte kopplar
+            // en översättning till fel svarsalternativ.
+            var expectedSortOrders = Enumerable
+                .Range(1, seedOptions.Count)
+                .ToArray();
+
+            var actualSortOrders = existingOptions
+                .Select(option => option.SortOrder)
+                .ToArray();
+
+            if (!actualSortOrders.SequenceEqual(expectedSortOrders))
+            {
+                throw new InvalidOperationException(
+                    $"Frågan {existingQuestion.Id} har oväntade " +
+                    "svarsalternativ. Kontrollera antal och SortOrder " +
+                    "innan frågan översätts.");
+            }
+
+            existingQuestion.Text = seedQuestion.Text;
+
+            for (var index = 0; index < seedOptions.Count; index++)
+            {
+                // Uppdatera endast texten.
+                // Befintligt Id, QuestionId och SortOrder behålls.
+                existingOptions[index].Text = seedOptions[index].Text;
+            }
+
+            // Befintligt IsActive behålls.
         }
 
         await context.SaveChangesAsync(cancellationToken);
