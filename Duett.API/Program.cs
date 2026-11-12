@@ -217,9 +217,8 @@ app.Use(async (context, next) =>
             context.Request.Path);
     }
 });
-
-// API-dokumentation visas bara i utvecklingsmiljön.
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() ||
+    builder.Configuration.GetValue<bool>("ApiDocs:Enabled"))
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
