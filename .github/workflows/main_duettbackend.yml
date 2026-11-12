@@ -1,87 +1,55 @@
-name: Build and deploy DuettBackend
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+
+name: Build and deploy ASP.Net Core app to Azure Web App - DuettBackend
 
 on:
   push:
     branches:
-      - main
+      - 'main'
   workflow_dispatch:
-
-concurrency:
-  group: duettbackend-production
-  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: windows-latest
-
     permissions:
-      contents: read
+      contents: read #This is required for actions/checkout
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up .NET
+      - name: Set up .NET Core
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.x'
 
-      - name: Publish API for Windows x64
-        shell: pwsh
-        run: >
-          dotnet publish ./Duett.API/Duett.API.csproj
-          --configuration Release
-          --runtime win-x64
-          --self-contained false
-          --output ./publish
+      - name: Build with dotnet
+        run: dotnet build --configuration Release
 
-      - name: Show published size and largest files
-        shell: pwsh
-        run: |
-          $files = Get-ChildItem ./publish -Recurse -File
-          $totalBytes = ($files | Measure-Object -Property Length -Sum).Sum
+      - name: dotnet publish
+        run: dotnet publish -c Release -o "${{env.DOTNET_ROOT}}/myapp"
 
-          Write-Host ("Published size: {0:N2} MB" -f ($totalBytes / 1MB))
-
-          $files |
-            Sort-Object Length -Descending |
-            Select-Object -First 15 FullName,
-              @{Name='SizeMB'; Expression={[math]::Round($_.Length / 1MB, 2)}} |
-            Format-Table -AutoSize
-
-      - name: Upload published API
+      - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
-          name: duett-api
-          path: ./publish
-          if-no-files-found: error
-          retention-days: 3
+          name: .net-app
+          path: ${{env.DOTNET_ROOT}}/myapp
 
   deploy:
     runs-on: windows-latest
     needs: build
-
-    permissions:
-      id-token: write
-      contents: read
-
+    
     steps:
-      - name: Download published API
+      - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
-          name: duett-api
-          path: ./publish
-
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_5371AE4DA1AD41C9AF5FD502FC07DDF1 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7164A07E75AE467E8A5BE890012E34C8 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_96CA41E820FA4A749AAED14592778CD6 }}
-
-      - name: Deploy to Azure
+          name: .net-app
+      
+      - name: Deploy to Azure Web App
+        id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: DuettBackend
-          slot-name: Production
-          package: ./publish
+          app-name: 'DuettBackend'
+          slot-name: 'Production'
+          package: .
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_A837EA32C5C642AEA97FEAB4877C3374 }}
