@@ -71,6 +71,15 @@ namespace Duett.API.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("EmailVerificationExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("EmailVerificationFailedAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("EmailVerificationNextSendAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("bit");
 
@@ -93,6 +102,10 @@ namespace Duett.API.Migrations
 
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("bit");
+
+                    b.Property<string>("ProtectedEmailVerificationCode")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
 
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("nvarchar(max)");
