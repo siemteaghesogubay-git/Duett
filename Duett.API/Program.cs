@@ -105,15 +105,14 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 
-builder.Services.AddScoped<
-    IPartnerPreferencesService,
-    PartnerPreferencesService>();
+builder.Services.AddScoped< IPartnerPreferencesService, PartnerPreferencesService>();
 
 builder.Services.AddScoped<IMatchService, MatchService>();
 builder.Services.AddScoped<IProfileLikeService, ProfileLikeService>();
 builder.Services.AddScoped<IUserMatchService, UserMatchService>();
 builder.Services.AddScoped<IGameService, GameService>();
 builder.Services.AddScoped<IChatService, ChatService>();
+builder.Services.AddScoped<IEmailService, AzureEmailService>();
 
 builder.Services.AddScoped<
     IMatchQuestionService,
