@@ -1,3 +1,4 @@
+using Azure.Communication.Email;
 using Duett.API.Data;
 using Duett.API.Models;
 using Duett.API.Repositories;
@@ -20,7 +21,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Krävs för Identitys e-postverifiering och lösenordsåterställning.
 builder.Services.AddDataProtection();
 
-// Databasanslutning från konfigurationen.
+// Databas.
 var connectionString = builder.Configuration
     .GetConnectionString("DefaultConnection");
 
@@ -56,22 +57,75 @@ builder.Services
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
+// Azure Communication Services för riktiga mejl.
+var emailConnectionString =
+    builder.Configuration["Email:ConnectionString"];
+
+var emailSenderAddress =
+    builder.Configuration["Email:SenderAddress"];
+
+var emailFrontendUrl =
+    builder.Configuration["Email:FrontendUrl"];
+
+if (string.IsNullOrWhiteSpace(emailConnectionString))
+{
+    throw new InvalidOperationException(
+        "Email:ConnectionString saknas.");
+}
+
+if (string.IsNullOrWhiteSpace(emailSenderAddress))
+{
+    throw new InvalidOperationException(
+        "Email:SenderAddress saknas.");
+}
+
+if (string.IsNullOrWhiteSpace(emailFrontendUrl) ||
+    !Uri.TryCreate(
+        emailFrontendUrl,
+        UriKind.Absolute,
+        out var frontendUri) ||
+    (frontendUri.Scheme != Uri.UriSchemeHttps &&
+     !(frontendUri.Scheme == Uri.UriSchemeHttp &&
+       frontendUri.IsLoopback)) ||
+    !string.IsNullOrEmpty(frontendUri.Query) ||
+    !string.IsNullOrEmpty(frontendUri.Fragment))
+{
+    throw new InvalidOperationException(
+        "Email:FrontendUrl måste vara en giltig frontendadress " +
+        "utan query eller fragment. HTTPS krävs utom för localhost.");
+}
+
+builder.Services.AddSingleton(
+    new EmailClient(emailConnectionString));
+
+builder.Services.AddScoped<IEmailService, AzureEmailService>();
+
 // Tjänster.
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IEmailService, DevelopmentEmailService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
+
 builder.Services.AddScoped<
     IPartnerPreferencesService,
     PartnerPreferencesService>();
+
 builder.Services.AddScoped<IMatchService, MatchService>();
 builder.Services.AddScoped<IProfileLikeService, ProfileLikeService>();
 builder.Services.AddScoped<IUserMatchService, UserMatchService>();
 builder.Services.AddScoped<IGameService, GameService>();
 builder.Services.AddScoped<IChatService, ChatService>();
-builder.Services.AddScoped<IMatchQuestionService, MatchQuestionService>();
-builder.Services.AddScoped<IProfilePhotoProcessor, ProfilePhotoProcessor>();
-builder.Services.AddScoped<IProfilePhotoService, ProfilePhotoService>();
+
+builder.Services.AddScoped<
+    IMatchQuestionService,
+    MatchQuestionService>();
+
+builder.Services.AddScoped<
+    IProfilePhotoProcessor,
+    ProfilePhotoProcessor>();
+
+builder.Services.AddScoped<
+    IProfilePhotoService,
+    ProfilePhotoService>();
 
 // Privat bildlagring.
 builder.Services.AddScoped<
@@ -82,22 +136,33 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IUserProfileRepository,
     UserProfileRepository>();
+
 builder.Services.AddScoped<
     IPartnerPreferencesRepository,
     PartnerPreferencesRepository>();
+
 builder.Services.AddScoped<IMatchRepository, MatchRepository>();
-builder.Services.AddScoped<IProfileLikeRepository, ProfileLikeRepository>();
-builder.Services.AddScoped<IUserMatchRepository, UserMatchRepository>();
+
+builder.Services.AddScoped<
+    IProfileLikeRepository,
+    ProfileLikeRepository>();
+
+builder.Services.AddScoped<
+    IUserMatchRepository,
+    UserMatchRepository>();
+
 builder.Services.AddScoped<IGameRepository, GameRepository>();
 builder.Services.AddScoped<IChatRepository, ChatRepository>();
+
 builder.Services.AddScoped<
     IMatchQuestionRepository,
     MatchQuestionRepository>();
+
 builder.Services.AddScoped<
     IProfilePhotoRepository,
     ProfilePhotoRepository>();
 
-// JWT-inställningar från konfigurationen, exempelvis User Secrets.
+// JWT-inställningar.
 var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
@@ -110,7 +175,7 @@ if (string.IsNullOrWhiteSpace(jwtKey) ||
         "Jwt:Key, Jwt:Issuer och Jwt:Audience måste anges.");
 }
 
-// Samma avkodning som i TokenService.
+// Samma Base64-avkodning som i TokenService.
 byte[] keyBytes;
 
 try
@@ -129,7 +194,6 @@ if (keyBytes.Length < 32)
         "JWT-nyckeln måste innehålla minst 32 byte.");
 }
 
-// Validera token som skickas till API:et.
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -164,13 +228,19 @@ builder.Services.AddAuthorization();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
-// Tillåt anrop från React-appen.
+// Generiska felsvar vid oväntade fel.
+builder.Services.AddProblemDetails();
+
+// Tillåt anrop från den frontend som konfigurerats.
+// En origin innehåller schema, värd och eventuell port.
+var frontendOrigin = frontendUri.GetLeftPart(UriPartial.Authority);
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
     {
         policy
-            .WithOrigins("http://localhost:5173")
+            .WithOrigins(frontendOrigin)
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
@@ -185,7 +255,8 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("PasswordRecovery", context =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey:
-                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                context.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown",
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 5,
@@ -197,10 +268,10 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+// Logga oväntade fel på servern och returnera ett generiskt felsvar.
+app.UseExceptionHandler();
 
-
-// Hantera avbrutna HTTP-anrop.
-// TaskCanceledException ärver från OperationCanceledException.
+// Hantera HTTP-anrop som klienten har avbrutit.
 app.Use(async (context, next) =>
 {
     try
@@ -210,31 +281,31 @@ app.Use(async (context, next) =>
     catch (OperationCanceledException)
         when (context.RequestAborted.IsCancellationRequested)
     {
-        // Klienten har avbrutit anropet.
-        // Försök inte skriva något svar till den.
         app.Logger.LogDebug(
             "Klienten avbröt anropet till {Path}.",
             context.Request.Path);
     }
 });
-if (app.Environment.IsDevelopment() ||
-    builder.Configuration.GetValue<bool>("ApiDocs:Enabled"))
-{
-    app.MapOpenApi();
-    app.MapScalarApiReference();
-}
 
 app.UseHttpsRedirection();
 
 app.UseRouting();
 
-// CORS ligger före autentisering och behörighetskontroll.
 app.UseCors("Frontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseRateLimiter();
+
+// API-dokumentation i utvecklingsmiljön,
+// eller när ApiDocs:Enabled uttryckligen aktiverats.
+if (app.Environment.IsDevelopment() ||
+    app.Configuration.GetValue<bool>("ApiDocs:Enabled"))
+{
+    app.MapOpenApi();
+    app.MapScalarApiReference();
+}
 
 app.MapControllers();
 

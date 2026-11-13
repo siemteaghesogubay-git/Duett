@@ -1,23 +1,40 @@
 ﻿using Duett.API.Storage.IStorage;
-using Duett.API.Storage;
+
 namespace Duett.API.Storage;
 
 public class LocalPrivatePhotoStorage : IPrivatePhotoStorage
 {
     private readonly string _directory;
 
-    public LocalPrivatePhotoStorage(IWebHostEnvironment environment)
+    public LocalPrivatePhotoStorage(
+        IWebHostEnvironment environment,
+        IConfiguration configuration)
     {
-        if (!environment.IsDevelopment())
+        var configuredDirectory =
+            configuration["PhotoStorage:Directory"];
+
+        if (!string.IsNullOrWhiteSpace(configuredDirectory))
+        {
+            if (!Path.IsPathFullyQualified(configuredDirectory))
+            {
+                throw new InvalidOperationException(
+                    "PhotoStorage:Directory måste vara en absolut sökväg.");
+            }
+
+            _directory = configuredDirectory;
+        }
+        else if (environment.IsDevelopment())
+        {
+            _directory = Path.Combine(
+                environment.ContentRootPath,
+                "App_Data",
+                "PrivatePhotos");
+        }
+        else
         {
             throw new InvalidOperationException(
-                "Privat bildlagring för produktionsmiljön måste konfigureras.");
+                "PhotoStorage:Directory måste anges i produktionsmiljön.");
         }
-
-        _directory = Path.Combine(
-            environment.ContentRootPath,
-            "App_Data",
-            "PrivatePhotos");
 
         Directory.CreateDirectory(_directory);
     }
@@ -37,7 +54,7 @@ public class LocalPrivatePhotoStorage : IPrivatePhotoStorage
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Använd aldrig användarens filnamn som lagringsnyckel.
+        // Skapa ett eget filnamn i stället för användarens filnamn.
         var storageKey = Guid.NewGuid().ToString("N");
         var filePath = GetFilePath(storageKey);
 
@@ -61,7 +78,7 @@ public class LocalPrivatePhotoStorage : IPrivatePhotoStorage
         }
         catch
         {
-            // Stäng filen innan en ofullständig uppladdning tas bort.
+            // Stäng filen innan den ofullständiga uppladdningen tas bort.
             await destination.DisposeAsync();
 
             try
@@ -129,8 +146,7 @@ public class LocalPrivatePhotoStorage : IPrivatePhotoStorage
 
     private string GetFilePath(string storageKey)
     {
-        // Acceptera endast våra egna nycklar.
-        // Sökvägar och användarvalda filnamn är inte tillåtna.
+        // Acceptera endast lagringsnycklar som skapats av backend.
         if (string.IsNullOrWhiteSpace(storageKey) ||
             storageKey.Length != 32 ||
             !Guid.TryParseExact(storageKey, "N", out var id))
