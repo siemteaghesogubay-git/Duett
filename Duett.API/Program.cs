@@ -11,12 +11,31 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.AzureAppServices;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Skicka applikationsloggar till Azure App Service.
+builder.Logging.AddAzureWebAppDiagnostics();
+
+builder.Logging.AddFilter(
+    "Duett.API.Services.AzureEmailService",
+    LogLevel.Information);
+
+builder.Logging.AddFilter(
+    "Microsoft.AspNetCore.Diagnostics",
+    LogLevel.Error);
+
+builder.Services.Configure<AzureFileLoggerOptions>(options =>
+{
+    options.FileName = "duett-diagnostics-";
+    options.FileSizeLimit = 1024 * 1024;
+    options.RetainedFileCountLimit = 3;
+});
 
 // Krävs för Identitys e-postverifiering och lösenordsåterställning.
 builder.Services.AddDataProtection();
@@ -103,16 +122,27 @@ builder.Services.AddScoped<IEmailService, AzureEmailService>();
 // Tjänster.
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
-builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 
-builder.Services.AddScoped< IPartnerPreferencesService, PartnerPreferencesService>();
+builder.Services.AddScoped<
+    IUserProfileService,
+    UserProfileService>();
+
+builder.Services.AddScoped<
+    IPartnerPreferencesService,
+    PartnerPreferencesService>();
 
 builder.Services.AddScoped<IMatchService, MatchService>();
-builder.Services.AddScoped<IProfileLikeService, ProfileLikeService>();
-builder.Services.AddScoped<IUserMatchService, UserMatchService>();
+
+builder.Services.AddScoped<
+    IProfileLikeService,
+    ProfileLikeService>();
+
+builder.Services.AddScoped<
+    IUserMatchService,
+    UserMatchService>();
+
 builder.Services.AddScoped<IGameService, GameService>();
 builder.Services.AddScoped<IChatService, ChatService>();
-builder.Services.AddScoped<IEmailService, AzureEmailService>();
 
 builder.Services.AddScoped<
     IMatchQuestionService,
@@ -193,6 +223,7 @@ if (keyBytes.Length < 32)
         "JWT-nyckeln måste innehålla minst 32 byte.");
 }
 
+// Validera JWT från klienten.
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -230,9 +261,9 @@ builder.Services.AddOpenApi();
 // Generiska felsvar vid oväntade fel.
 builder.Services.AddProblemDetails();
 
-// Tillåt anrop från den frontend som konfigurerats.
-// En origin innehåller schema, värd och eventuell port.
-var frontendOrigin = frontendUri.GetLeftPart(UriPartial.Authority);
+// Tillåt anrop från den konfigurerade frontendens origin.
+var frontendOrigin =
+    frontendUri.GetLeftPart(UriPartial.Authority);
 
 builder.Services.AddCors(options =>
 {
@@ -267,7 +298,7 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
-// Logga oväntade fel på servern och returnera ett generiskt felsvar.
+// Logga oväntade undantag och returnera ett generiskt felsvar.
 app.UseExceptionHandler();
 
 // Hantera HTTP-anrop som klienten har avbrutit.
@@ -297,8 +328,7 @@ app.UseAuthorization();
 
 app.UseRateLimiter();
 
-// API-dokumentation i utvecklingsmiljön,
-// eller när ApiDocs:Enabled uttryckligen aktiverats.
+// API-dokumentation.
 if (app.Environment.IsDevelopment() ||
     app.Configuration.GetValue<bool>("ApiDocs:Enabled"))
 {
@@ -316,5 +346,9 @@ if (app.Environment.IsDevelopment())
 {
     await GameQuestionSeeder.SeedAsync(app.Services);
 }
+
+// Bekräfta i loggen att versionen med diagnostik har startat.
+app.Logger.LogWarning(
+    "Duett har startat med Azure-diagnostik och AzureEmailService.");
 
 app.Run();
