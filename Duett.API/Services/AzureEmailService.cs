@@ -52,46 +52,85 @@ public sealed class AzureEmailService : IEmailService
 
     public Task SendVerificationAsync(string email, string token)
     {
+        // Parametern heter token för att matcha befintligt interface.
+        // För verifiering är värdet nu en sexsiffrig kod.
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+
+        if (token.Length != 6 ||
+            token.Any(character => character < '0' || character > '9'))
+        {
+            throw new ArgumentException(
+                "Verification code must contain six digits.",
+                nameof(token));
+        }
+
+        var encodedCode = WebUtility.HtmlEncode(token);
+
+        var html = $"""
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="utf-8">
+                <title>Verify your Duett email</title>
+            </head>
+            <body>
+                <h1>Welcome to Duett</h1>
+
+                <p>Your verification code is:</p>
+
+                <p style="font-size:32px;font-weight:bold;letter-spacing:6px">
+                    {encodedCode}
+                </p>
+
+                <p>
+                    Open Duett, select Verify email, and enter your
+                    email address and this six-digit code.
+                </p>
+
+                <p>
+                    The code expires in 10 minutes and can only be used once.
+                </p>
+
+                <p>
+                    If you did not create a Duett account,
+                    you can ignore this email.
+                </p>
+
+                <p>Duett</p>
+            </body>
+            </html>
+            """;
+
+        var plainText = $"""
+            Welcome to Duett
+
+            Your verification code is: {token}
+
+            Open Duett, select Verify email, and enter your email address
+            and this six-digit code.
+
+            The code expires in 10 minutes and can only be used once.
+
+            If you did not create a Duett account, you can ignore this email.
+
+            Duett
+            """;
+
         return SendAsync(
             email,
-            token,
-            action: "verify",
-            subject: "Verify your Duett email",
-            heading: "Welcome to Duett",
-            instruction:
-                "Confirm your email address to finish creating your account.",
-            buttonText: "Verify email");
+            "verify",
+            "Verify your Duett email",
+            html,
+            plainText);
     }
 
     public Task SendPasswordResetAsync(string email, string token)
     {
-        return SendAsync(
-            email,
-            token,
-            action: "reset",
-            subject: "Reset your Duett password",
-            heading: "Reset your password",
-            instruction:
-                "Open the link below to choose a new password.",
-            buttonText: "Reset password");
-    }
-
-    private async Task SendAsync(
-        string email,
-        string token,
-        string action,
-        string subject,
-        string heading,
-        string instruction,
-        string buttonText)
-    {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
 
-        // React läser fragmentet och öppnar rätt formulär.
-        // URL-kodningen bevarar specialtecken i Identity-token.
         var link =
-            $"{_frontendUrl}/#action={action}" +
+            $"{_frontendUrl}/#action=reset" +
             $"&email={Uri.EscapeDataString(email.Trim())}" +
             $"&token={Uri.EscapeDataString(token)}";
 
@@ -102,15 +141,15 @@ public sealed class AzureEmailService : IEmailService
             <html lang="en">
             <head>
                 <meta charset="utf-8">
-                <title>{subject}</title>
+                <title>Reset your Duett password</title>
             </head>
             <body>
-                <h1>{heading}</h1>
+                <h1>Reset your password</h1>
 
-                <p>{instruction}</p>
+                <p>Open the link below to choose a new password.</p>
 
                 <p>
-                    <a href="{encodedLink}">{buttonText}</a>
+                    <a href="{encodedLink}">Reset password</a>
                 </p>
 
                 <p>
@@ -123,9 +162,9 @@ public sealed class AzureEmailService : IEmailService
             """;
 
         var plainText = $"""
-            {heading}
+            Reset your password
 
-            {instruction}
+            Open the link below to choose a new password.
 
             {link}
 
@@ -134,9 +173,26 @@ public sealed class AzureEmailService : IEmailService
             Duett
             """;
 
+        return SendAsync(
+            email,
+            "reset",
+            "Reset your Duett password",
+            html,
+            plainText);
+    }
+
+    private async Task SendAsync(
+        string email,
+        string emailType,
+        string subject,
+        string html,
+        string plainText)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+
         _logger.LogInformation(
             "Startar Azure-mejl. Typ: {EmailType}.",
-            action);
+            emailType);
 
         try
         {
@@ -156,12 +212,6 @@ public sealed class AzureEmailService : IEmailService
 
             if (operation.Value.Status != EmailSendStatus.Succeeded)
             {
-                _logger.LogError(
-                    "Azure-mejl fick oväntad status. " +
-                    "OperationId: {OperationId}, Status: {Status}.",
-                    operation.Id,
-                    operation.Value.Status);
-
                 throw new InvalidOperationException(
                     "E-postutskicket kunde inte slutföras.");
             }
@@ -169,8 +219,8 @@ public sealed class AzureEmailService : IEmailService
         catch (RequestFailedException ex)
         {
             _logger.LogError(
-                "Azure-mejl misslyckades. " +
-                "HTTP-status: {Status}, Felkod: {ErrorCode}.",
+                "Azure-mejl misslyckades. HTTP-status: {Status}, " +
+                "Felkod: {ErrorCode}.",
                 ex.Status,
                 ex.ErrorCode);
 

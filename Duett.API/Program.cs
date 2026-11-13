@@ -37,7 +37,7 @@ builder.Services.Configure<AzureFileLoggerOptions>(options =>
     options.RetainedFileCountLimit = 3;
 });
 
-// Krävs för Identitys e-postverifiering och lösenordsåterställning.
+// Används för skyddade verifieringskoder och Identity-token.
 builder.Services.AddDataProtection();
 
 // Databas.
@@ -276,7 +276,8 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Begränsa förfrågningar till lösenordsåterställningen.
+// Begränsa förfrågningar till lösenordsåterställning
+// och e-postverifiering.
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode =
@@ -290,6 +291,19 @@ builder.Services.AddRateLimiter(options =>
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("EmailVerification", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey:
+                context.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
                 AutoReplenishment = true
@@ -321,6 +335,7 @@ app.UseHttpsRedirection();
 
 app.UseRouting();
 
+// CORS före autentisering och behörighetskontroll.
 app.UseCors("Frontend");
 
 app.UseAuthentication();
@@ -347,8 +362,7 @@ if (app.Environment.IsDevelopment())
     await GameQuestionSeeder.SeedAsync(app.Services);
 }
 
-// Bekräfta i loggen att versionen med diagnostik har startat.
-app.Logger.LogWarning(
+app.Logger.LogInformation(
     "Duett har startat med Azure-diagnostik och AzureEmailService.");
 
 app.Run();

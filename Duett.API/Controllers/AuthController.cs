@@ -30,7 +30,7 @@ public class AuthController : ControllerBase
 
             return Ok(new
             {
-                message = "Registreringsförfrågan har behandlats."
+                message = "Your registration request has been processed."
             });
         }
         catch (ArgumentException ex)
@@ -40,17 +40,18 @@ public class AuthController : ControllerBase
                 message = ex.Message
             });
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            return Conflict(new
-            {
-                message = ex.Message
-            });
+            return Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Registration could not be completed.",
+                detail: "Please try again later.");
         }
     }
 
     [AllowAnonymous]
     [HttpPost("verify-email")]
+    [EnableRateLimiting("EmailVerification")]
     public async Task<IActionResult> VerifyEmail(
         [FromBody] VerifyEmailDto dto)
     {
@@ -60,7 +61,7 @@ public class AuthController : ControllerBase
 
             return Ok(new
             {
-                message = "E-postadressen är verifierad."
+                message = "Your email address has been verified."
             });
         }
         catch (ArgumentException ex)
@@ -70,6 +71,24 @@ public class AuthController : ControllerBase
                 message = ex.Message
             });
         }
+    }
+
+    [AllowAnonymous]
+    [HttpPost("resend-verification")]
+    [EnableRateLimiting("EmailVerification")]
+    public async Task<IActionResult> ResendVerification(
+        [FromBody] ResendVerificationDto dto)
+    {
+        await _authService.ResendVerificationAsync(dto);
+
+        // Samma svar för okänd, verifierad eller overifierad adress.
+        return Ok(new
+        {
+            message =
+                "If this address belongs to an unverified account, " +
+                "a verification code will be sent. " +
+                "Please wait at least 60 seconds between requests."
+        });
     }
 
     [AllowAnonymous]
@@ -86,8 +105,8 @@ public class AuthController : ControllerBase
                 return Unauthorized(new
                 {
                     message =
-                        "Inloggningen misslyckades. Kontrollera dina uppgifter " +
-                        "och att e-postadressen är verifierad."
+                        "Sign-in failed. Check your details and make sure " +
+                        "your email address is verified."
                 });
             }
 
@@ -95,11 +114,10 @@ public class AuthController : ControllerBase
         }
         catch (InvalidOperationException)
         {
-            return Conflict(new
-            {
-                message =
-                    "Inloggningen kunde inte behandlas. Försök igen."
-            });
+            return Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "Sign-in could not be completed.",
+                detail: "Please try again later.");
         }
     }
 
@@ -114,8 +132,8 @@ public class AuthController : ControllerBase
         return Ok(new
         {
             message =
-                "Om adressen tillhör ett verifierat konto skickas " +
-                "instruktioner för att återställa lösenordet."
+                "If this address belongs to a verified account, " +
+                "password reset instructions will be sent."
         });
     }
 
@@ -131,14 +149,14 @@ public class AuthController : ControllerBase
 
             return Ok(new
             {
-                message = "Lösenordet har återställts."
+                message = "Your password has been reset."
             });
         }
         catch (ValidationException ex)
         {
             return Problem(
                 statusCode: StatusCodes.Status400BadRequest,
-                title: "Återställningen misslyckades.",
+                title: "Password reset failed.",
                 detail: ex.Message);
         }
     }
