@@ -20,6 +20,10 @@ public class ApplicationDbContext
 
     public DbSet<ProfileLike> ProfileLikes => Set<ProfileLike>();
 
+    public DbSet<UserBlock> UserBlocks => Set<UserBlock>();
+
+    public DbSet<UserReport> UserReports => Set<UserReport>();
+
     public DbSet<UserMatch> UserMatches => Set<UserMatch>();
 
     public DbSet<GameQuestion> GameQuestions => Set<GameQuestion>();
@@ -33,8 +37,12 @@ public class ApplicationDbContext
         => Set<GameRoundSubmission>();
 
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
-    public DbSet<MatchQuestion> MatchQuestions => Set<MatchQuestion>();
+
+    public DbSet<MatchQuestion> MatchQuestions
+        => Set<MatchQuestion>();
+
     public DbSet<ProfilePhoto> ProfilePhotos => Set<ProfilePhoto>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -116,6 +124,111 @@ public class ApplicationDbContext
                 table.HasCheckConstraint(
                     "CK_ProfileLikes_NoSelfLike",
                     "[FromUserId] <> [ToUserId]");
+            });
+        });
+
+        // Blockeringar.
+        builder.Entity<UserBlock>(block =>
+        {
+            block.HasKey(b => new
+            {
+                b.BlockerUserId,
+                b.BlockedUserId
+            });
+
+            block.Property(b => b.BlockerUserId)
+                .HasMaxLength(450)
+                .IsRequired();
+
+            block.Property(b => b.BlockedUserId)
+                .HasMaxLength(450)
+                .IsRequired();
+
+            block.HasOne(b => b.BlockerUser)
+                .WithMany()
+                .HasForeignKey(b => b.BlockerUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            block.HasOne(b => b.BlockedUser)
+                .WithMany()
+                .HasForeignKey(b => b.BlockedUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            block.HasIndex(b => b.BlockedUserId);
+
+            block.ToTable("UserBlocks", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_UserBlocks_NoSelfBlock",
+                    "[BlockerUserId] <> [BlockedUserId]");
+            });
+        });
+
+        // Anmälningar som administratörer kan granska.
+        builder.Entity<UserReport>(report =>
+        {
+            report.HasKey(r => r.Id);
+
+            report.Property(r => r.ReporterUserId)
+                .HasMaxLength(450)
+                .IsRequired();
+
+            report.Property(r => r.ReportedUserId)
+                .HasMaxLength(450)
+                .IsRequired();
+
+            report.Property(r => r.Reason)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .IsRequired();
+
+            report.Property(r => r.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50)
+                .IsRequired();
+
+            report.Property(r => r.Details)
+                .HasMaxLength(1000);
+
+            report.Property(r => r.ReviewedByUserId)
+                .HasMaxLength(450);
+
+            report.Property(r => r.ReviewNote)
+                .HasMaxLength(2000);
+
+            report.HasOne(r => r.ReporterUser)
+                .WithMany()
+                .HasForeignKey(r => r.ReporterUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            report.HasOne(r => r.ReportedUser)
+                .WithMany()
+                .HasForeignKey(r => r.ReportedUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            report.HasOne(r => r.ReviewedByUser)
+                .WithMany()
+                .HasForeignKey(r => r.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            report.HasOne(r => r.Match)
+                .WithMany()
+                .HasForeignKey(r => r.MatchId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            report.HasIndex(r => r.ReportedUserId);
+
+            report.HasIndex(r => new
+            {
+                r.Status,
+                r.CreatedAtUtc
+            });
+
+            report.ToTable("UserReports", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_UserReports_NoSelfReport",
+                    "[ReporterUserId] <> [ReportedUserId]");
             });
         });
 
@@ -266,6 +379,7 @@ public class ApplicationDbContext
                 .OnDelete(DeleteBehavior.NoAction);
         });
 
+        // Chattmeddelanden.
         builder.Entity<ChatMessage>(message =>
         {
             message.HasKey(m => m.Id);
@@ -288,38 +402,6 @@ public class ApplicationDbContext
                 .HasForeignKey(m => m.SenderUserId)
                 .OnDelete(DeleteBehavior.NoAction);
 
-            // Underlättar hämtning av meddelanden i en matchning
-            // med stabil sortering på tid och ID.
-            message.HasIndex(m => new
-            {
-                m.MatchId,
-                m.CreatedAtUtc,
-                m.Id
-            });
-        }); builder.Entity<ChatMessage>(message =>
-        {
-            message.HasKey(m => m.Id);
-
-            message.Property(m => m.SenderUserId)
-                .HasMaxLength(450)
-                .IsRequired();
-
-            message.Property(m => m.Text)
-                .HasMaxLength(2000)
-                .IsRequired();
-
-            message.HasOne(m => m.Match)
-                .WithMany()
-                .HasForeignKey(m => m.MatchId)
-                .OnDelete(DeleteBehavior.NoAction);
-
-            message.HasOne(m => m.SenderUser)
-                .WithMany()
-                .HasForeignKey(m => m.SenderUserId)
-                .OnDelete(DeleteBehavior.NoAction);
-
-            // Underlättar hämtning av meddelanden i en matchning
-            // med stabil sortering på tid och ID.
             message.HasIndex(m => new
             {
                 m.MatchId,
@@ -328,6 +410,7 @@ public class ApplicationDbContext
             });
         });
 
+        // Frågor mellan matchade användare.
         builder.Entity<MatchQuestion>(question =>
         {
             question.HasKey(q => q.Id);
@@ -361,8 +444,6 @@ public class ApplicationDbContext
                 .HasForeignKey(q => q.AnsweredByUserId)
                 .OnDelete(DeleteBehavior.NoAction);
 
-            // Varje person kan ha högst tre numrerade frågor
-            // i samma matchning.
             question.HasIndex(q => new
             {
                 q.MatchId,
@@ -381,7 +462,6 @@ public class ApplicationDbContext
                     "[AnsweredByUserId] IS NULL " +
                     "OR [AnsweredByUserId] <> [AskedByUserId]");
 
-                // Alla svarsfält är antingen tomma eller ifyllda tillsammans.
                 table.HasCheckConstraint(
                     "CK_MatchQuestions_AnswerState",
                     "([AnswerText] IS NULL " +
@@ -394,8 +474,7 @@ public class ApplicationDbContext
             });
         });
 
-
-
+        // Profilbilder.
         builder.Entity<ProfilePhoto>(photo =>
         {
             photo.HasKey(p => p.UserId);
@@ -427,6 +506,5 @@ public class ApplicationDbContext
                     "[SizeBytes] > 0");
             });
         });
-
     }
 }

@@ -1,4 +1,5 @@
 using Azure.Communication.Email;
+using Azure.Communication.Identity;
 using Duett.API.Data;
 using Duett.API.Models;
 using Duett.API.Repositories;
@@ -76,27 +77,12 @@ builder.Services
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
-// Azure Communication Services för riktiga mejl.
-var emailConnectionString =
-    builder.Configuration["Email:ConnectionString"];
-
-var emailSenderAddress =
-    builder.Configuration["Email:SenderAddress"];
-
+// Frontendens URL används både för CORS och mejllänkar.
 var emailFrontendUrl =
-    builder.Configuration["Email:FrontendUrl"];
-
-if (string.IsNullOrWhiteSpace(emailConnectionString))
-{
-    throw new InvalidOperationException(
-        "Email:ConnectionString saknas.");
-}
-
-if (string.IsNullOrWhiteSpace(emailSenderAddress))
-{
-    throw new InvalidOperationException(
-        "Email:SenderAddress saknas.");
-}
+    builder.Configuration["Email:FrontendUrl"]
+    ?? (builder.Environment.IsDevelopment()
+        ? "http://localhost:5173"
+        : null);
 
 if (string.IsNullOrWhiteSpace(emailFrontendUrl) ||
     !Uri.TryCreate(
@@ -114,13 +100,55 @@ if (string.IsNullOrWhiteSpace(emailFrontendUrl) ||
         "utan query eller fragment. HTTPS krävs utom för localhost.");
 }
 
-builder.Services.AddSingleton(
-    new EmailClient(emailConnectionString));
+// Lokalt sparas mejlinformation i App_Data/Mail.
+// I Azure används Azure Communication Services.
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddScoped<IEmailService, DevelopmentEmailService>();
+}
+else
+{
+    var emailConnectionString =
+        builder.Configuration["Email:ConnectionString"];
 
-builder.Services.AddScoped<IEmailService, AzureEmailService>();
+    var emailSenderAddress =
+        builder.Configuration["Email:SenderAddress"];
+
+    if (string.IsNullOrWhiteSpace(emailConnectionString))
+    {
+        throw new InvalidOperationException(
+            "Email:ConnectionString saknas.");
+    }
+
+    if (string.IsNullOrWhiteSpace(emailSenderAddress))
+    {
+        throw new InvalidOperationException(
+            "Email:SenderAddress saknas.");
+    }
+
+    builder.Services.AddSingleton(
+        new EmailClient(emailConnectionString));
+
+    builder.Services.AddScoped<IEmailService, AzureEmailService>();
+}
+
+// ACS används för VoIP-samtal både lokalt och i Azure.
+var callingConnectionString =
+    builder.Configuration["Calling:ConnectionString"];
+
+if (string.IsNullOrWhiteSpace(callingConnectionString))
+{
+    throw new InvalidOperationException(
+        "Calling:ConnectionString saknas.");
+}
+
+builder.Services.AddSingleton(
+    new CommunicationIdentityClient(callingConnectionString));
 
 // Tjänster.
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IAdminService, AdminService>();
+builder.Services.AddScoped<ICallingService, CallingService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 
 builder.Services.AddScoped<
@@ -156,6 +184,10 @@ builder.Services.AddScoped<
     IProfilePhotoService,
     ProfilePhotoService>();
 
+builder.Services.AddScoped<
+    IUserSafetyService,
+    UserSafetyService>();
+
 // Privat bildlagring.
 builder.Services.AddScoped<
     IPrivatePhotoStorage,
@@ -184,6 +216,12 @@ builder.Services.AddScoped<IGameRepository, GameRepository>();
 builder.Services.AddScoped<IChatRepository, ChatRepository>();
 
 builder.Services.AddScoped<
+    IUserSafetyRepository,
+    UserSafetyRepository>();
+
+builder.Services.AddScoped<IAdminRepository, AdminRepository>();
+
+builder.Services.AddScoped<
     IMatchQuestionRepository,
     MatchQuestionRepository>();
 
@@ -204,7 +242,6 @@ if (string.IsNullOrWhiteSpace(jwtKey) ||
         "Jwt:Key, Jwt:Issuer och Jwt:Audience måste anges.");
 }
 
-// Samma Base64-avkodning som i TokenService.
 byte[] keyBytes;
 
 try
@@ -276,8 +313,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Begränsa förfrågningar till lösenordsåterställning
-// och e-postverifiering.
+// Begränsa förfrågningar.
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode =
@@ -300,6 +336,36 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey:
                 context.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("UserSafety", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey:
+                context.User.FindFirstValue(
+                    ClaimTypes.NameIdentifier)
+                ?? context.Connection.RemoteIpAddress?.ToString()
+                ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("CallingTokens", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey:
+                context.User.FindFirstValue(
+                    ClaimTypes.NameIdentifier)
+                ?? context.Connection.RemoteIpAddress?.ToString()
                 ?? "unknown",
             factory: _ => new FixedWindowRateLimiterOptions
             {
@@ -335,7 +401,6 @@ app.UseHttpsRedirection();
 
 app.UseRouting();
 
-// CORS före autentisering och behörighetskontroll.
 app.UseCors("Frontend");
 
 app.UseAuthentication();
@@ -362,7 +427,6 @@ if (app.Environment.IsDevelopment())
     await GameQuestionSeeder.SeedAsync(app.Services);
 }
 
-app.Logger.LogInformation(
-    "Duett har startat med Azure-diagnostik och AzureEmailService.");
+app.Logger.LogInformation("Duett har startat.");
 
 app.Run();

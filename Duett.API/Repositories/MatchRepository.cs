@@ -62,7 +62,6 @@ public class MatchRepository : IMatchRepository
             return new List<UserProfile>();
         }
 
-        // Födelsedatum som motsvarar det önskade åldersintervallet.
         var youngestBirthDate = today.AddYears(-myPreferences.MinAge);
         var oldestBirthDateExclusive =
             today.AddYears(-(myPreferences.MaxAge + 1));
@@ -79,6 +78,13 @@ public class MatchRepository : IMatchRepository
             join preferences in _context.PartnerPreferences.AsNoTracking()
                 on profile.UserId equals preferences.UserId
             where profile.UserId != userId
+
+                // En blockering gäller åt båda håll.
+                && !_context.UserBlocks.Any(block =>
+                    (block.BlockerUserId == userId &&
+                     block.BlockedUserId == profile.UserId) ||
+                    (block.BlockerUserId == profile.UserId &&
+                     block.BlockedUserId == userId))
 
                 // Personen uppfyller mina önskemål.
                 && profile.DateOfBirth > oldestBirthDateExclusive
@@ -105,14 +111,11 @@ public class MatchRepository : IMatchRepository
             .ToListAsync(cancellationToken);
     }
 
-
-
-
     public async Task<bool> CanMatchAsync(
-    string userId,
-    string otherUserId,
-    DateOnly today,
-    CancellationToken cancellationToken = default)
+        string userId,
+        string otherUserId,
+        DateOnly today,
+        CancellationToken cancellationToken = default)
     {
         if (userId == otherUserId)
         {
@@ -166,6 +169,13 @@ public class MatchRepository : IMatchRepository
             join preferences in _context.PartnerPreferences.AsNoTracking()
                 on profile.UserId equals preferences.UserId
             where profile.UserId == otherUserId
+
+                // En blockering stoppar även direkta likes.
+                && !_context.UserBlocks.Any(block =>
+                    (block.BlockerUserId == userId &&
+                     block.BlockedUserId == profile.UserId) ||
+                    (block.BlockerUserId == profile.UserId &&
+                     block.BlockedUserId == userId))
 
                 // Den andra personen uppfyller mina önskemål.
                 && profile.DateOfBirth > oldestBirthDateExclusive

@@ -19,13 +19,26 @@ public class GameRepository : IGameRepository
         string userId,
         CancellationToken cancellationToken = default)
     {
-        return await _context.UserMatches
+        var match = await _context.UserMatches
             .AsNoTracking()
             .SingleOrDefaultAsync(
-                match => match.Id == matchId
-                    && (match.FirstUserId == userId
-                        || match.SecondUserId == userId),
+                savedMatch =>
+                    savedMatch.Id == matchId &&
+                    (savedMatch.FirstUserId == userId ||
+                     savedMatch.SecondUserId == userId),
                 cancellationToken);
+
+        if (match is null)
+        {
+            return null;
+        }
+
+        var isBlocked = await IsBlockedBetweenUsersAsync(
+            match.FirstUserId,
+            match.SecondUserId,
+            cancellationToken);
+
+        return isBlocked ? null : match;
     }
 
     public async Task<GameRound?> GetRoundForUserAsync(
@@ -33,15 +46,28 @@ public class GameRepository : IGameRepository
         string userId,
         CancellationToken cancellationToken = default)
     {
-        return await _context.GameRounds
+        var round = await _context.GameRounds
             .AsNoTracking()
-            .Include(round => round.Question)
+            .Include(savedRound => savedRound.Question)
                 .ThenInclude(question => question.Options)
             .SingleOrDefaultAsync(
-                round => round.Id == roundId
-                    && (round.Match.FirstUserId == userId
-                        || round.Match.SecondUserId == userId),
+                savedRound =>
+                    savedRound.Id == roundId &&
+                    (savedRound.Match.FirstUserId == userId ||
+                     savedRound.Match.SecondUserId == userId),
                 cancellationToken);
+
+        if (round is null)
+        {
+            return null;
+        }
+
+        var match = await GetMatchForUserAsync(
+            round.MatchId,
+            userId,
+            cancellationToken);
+
+        return match is null ? null : round;
     }
 
     public async Task<List<GameRoundSubmission>> GetSubmissionsForUserAsync(
@@ -49,12 +75,33 @@ public class GameRepository : IGameRepository
         string userId,
         CancellationToken cancellationToken = default)
     {
+        var matchId = await _context.GameRounds
+            .AsNoTracking()
+            .Where(round =>
+                round.Id == roundId &&
+                (round.Match.FirstUserId == userId ||
+                 round.Match.SecondUserId == userId))
+            .Select(round => (Guid?)round.MatchId)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (matchId is null)
+        {
+            return new List<GameRoundSubmission>();
+        }
+
+        var match = await GetMatchForUserAsync(
+            matchId.Value,
+            userId,
+            cancellationToken);
+
+        if (match is null)
+        {
+            return new List<GameRoundSubmission>();
+        }
+
         return await _context.GameRoundSubmissions
             .AsNoTracking()
-            .Where(submission =>
-                submission.RoundId == roundId
-                && (submission.Round.Match.FirstUserId == userId
-                    || submission.Round.Match.SecondUserId == userId))
+            .Where(submission => submission.RoundId == roundId)
             .ToListAsync(cancellationToken);
     }
 
@@ -69,8 +116,6 @@ public class GameRepository : IGameRepository
             await _context.Database.BeginTransactionAsync(
                 cancellationToken);
 
-        // Lås matchningen medan vi kontrollerar och skapar rundan.
-        // Parametrarna skickas separat från SQL-texten.
         var match = await _context.UserMatches
             .FromSqlInterpolated($"""
                 SELECT *
@@ -90,14 +135,26 @@ public class GameRepository : IGameRepository
             };
         }
 
-        // Återanvänd en pågående runda.
+        var isBlocked = await IsBlockedBetweenUsersAsync(
+            match.FirstUserId,
+            match.SecondUserId,
+            cancellationToken);
+
+        if (isBlocked)
+        {
+            return new StartGameRoundResult
+            {
+                Status = StartGameRoundStatus.MatchNotFound
+            };
+        }
+
         var currentRound = await _context.GameRounds
             .AsNoTracking()
             .Include(round => round.Question)
                 .ThenInclude(question => question.Options)
             .Where(round =>
-                round.MatchId == matchId
-                && round.CompletedAtUtc == null)
+                round.MatchId == matchId &&
+                round.CompletedAtUtc == null)
             .OrderBy(round => round.RoundNumber)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -112,8 +169,6 @@ public class GameRepository : IGameRepository
             };
         }
 
-        // Räkna rätta gissningar i avslutade rundor.
-        // Varje bidrag jämförs med den andra deltagarens svar.
         var correctGuesses =
             from submission in _context.GameRoundSubmissions
             join partnerSubmission in _context.GameRoundSubmissions
@@ -121,14 +176,13 @@ public class GameRepository : IGameRepository
             where submission.Round.MatchId == matchId
                 && submission.Round.CompletedAtUtc != null
                 && (
-                    (submission.UserId == match.FirstUserId
-                        && partnerSubmission.UserId == match.SecondUserId)
-                    ||
-                    (submission.UserId == match.SecondUserId
-                        && partnerSubmission.UserId == match.FirstUserId)
+                    (submission.UserId == match.FirstUserId &&
+                     partnerSubmission.UserId == match.SecondUserId) ||
+                    (submission.UserId == match.SecondUserId &&
+                     partnerSubmission.UserId == match.FirstUserId)
                 )
-                && submission.GuessOptionId
-                    == partnerSubmission.AnswerOptionId
+                && submission.GuessOptionId ==
+                    partnerSubmission.AnswerOptionId
             select submission;
 
         var firstUserCorrectCount = await correctGuesses.CountAsync(
@@ -139,8 +193,8 @@ public class GameRepository : IGameRepository
             submission => submission.UserId == match.SecondUserId,
             cancellationToken);
 
-        // Spelet är klart först när båda har minst tre rätt.
-        if (firstUserCorrectCount >= 3 && secondUserCorrectCount >= 3)
+        if (firstUserCorrectCount >= 3 &&
+            secondUserCorrectCount >= 3)
         {
             return new StartGameRoundResult
             {
@@ -148,17 +202,15 @@ public class GameRepository : IGameRepository
             };
         }
 
-        // Välj en aktiv fråga med minst två alternativ
-        // som paret inte redan har spelat.
         var question = await _context.GameQuestions
-            .Include(question => question.Options)
-            .Where(question =>
-                question.IsActive
-                && question.Options.Count >= 2
-                && !_context.GameRounds.Any(round =>
-                    round.MatchId == matchId
-                    && round.QuestionId == question.Id))
-            .OrderBy(question => question.Id)
+            .Include(savedQuestion => savedQuestion.Options)
+            .Where(savedQuestion =>
+                savedQuestion.IsActive &&
+                savedQuestion.Options.Count >= 2 &&
+                !_context.GameRounds.Any(round =>
+                    round.MatchId == matchId &&
+                    round.QuestionId == savedQuestion.Id))
+            .OrderBy(savedQuestion => savedQuestion.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (question is null)
@@ -205,13 +257,12 @@ public class GameRepository : IGameRepository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // Hitta matchningen och kontrollera deltagaren.
         var matchId = await _context.GameRounds
             .AsNoTracking()
             .Where(round =>
-                round.Id == roundId
-                && (round.Match.FirstUserId == userId
-                    || round.Match.SecondUserId == userId))
+                round.Id == roundId &&
+                (round.Match.FirstUserId == userId ||
+                 round.Match.SecondUserId == userId))
             .Select(round => (Guid?)round.MatchId)
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -226,7 +277,6 @@ public class GameRepository : IGameRepository
             await _context.Database.BeginTransactionAsync(
                 cancellationToken);
 
-        // Samma lås som vid spelstart.
         var match = await _context.UserMatches
             .FromSqlInterpolated($"""
                 SELECT *
@@ -243,12 +293,21 @@ public class GameRepository : IGameRepository
             return SubmitGameRoundStatus.RoundNotFound;
         }
 
-        // Hämta rundans tillstånd efter att låset tagits.
-        // Spårning behövs för att uppdatera CompletedAtUtc.
+        var isBlocked = await IsBlockedBetweenUsersAsync(
+            match.FirstUserId,
+            match.SecondUserId,
+            cancellationToken);
+
+        if (isBlocked)
+        {
+            return SubmitGameRoundStatus.RoundNotFound;
+        }
+
         var round = await _context.GameRounds
             .SingleOrDefaultAsync(
-                round => round.Id == roundId
-                    && round.MatchId == matchIdValue,
+                savedRound =>
+                    savedRound.Id == roundId &&
+                    savedRound.MatchId == matchIdValue,
                 cancellationToken);
 
         if (round is null)
@@ -258,8 +317,9 @@ public class GameRepository : IGameRepository
 
         var alreadySubmitted = await _context.GameRoundSubmissions
             .AnyAsync(
-                submission => submission.RoundId == roundId
-                    && submission.UserId == userId,
+                submission =>
+                    submission.RoundId == roundId &&
+                    submission.UserId == userId,
                 cancellationToken);
 
         if (alreadySubmitted)
@@ -272,22 +332,24 @@ public class GameRepository : IGameRepository
             return SubmitGameRoundStatus.RoundCompleted;
         }
 
-        if (answerOptionId == Guid.Empty || guessOptionId == Guid.Empty)
+        if (answerOptionId == Guid.Empty ||
+            guessOptionId == Guid.Empty)
         {
             return SubmitGameRoundStatus.InvalidOption;
         }
 
-        // Båda alternativen måste tillhöra rundans fråga.
         var answerIsValid = await _context.GameQuestionOptions
             .AnyAsync(
-                option => option.Id == answerOptionId
-                    && option.QuestionId == round.QuestionId,
+                option =>
+                    option.Id == answerOptionId &&
+                    option.QuestionId == round.QuestionId,
                 cancellationToken);
 
         var guessIsValid = await _context.GameQuestionOptions
             .AnyAsync(
-                option => option.Id == guessOptionId
-                    && option.QuestionId == round.QuestionId,
+                option =>
+                    option.Id == guessOptionId &&
+                    option.QuestionId == round.QuestionId,
                 cancellationToken);
 
         if (!answerIsValid || !guessIsValid)
@@ -304,8 +366,9 @@ public class GameRepository : IGameRepository
 
         var partnerHasSubmitted = await _context.GameRoundSubmissions
             .AnyAsync(
-                submission => submission.RoundId == roundId
-                    && submission.UserId == partnerUserId,
+                submission =>
+                    submission.RoundId == roundId &&
+                    submission.UserId == partnerUserId,
                 cancellationToken);
 
         var now = DateTime.UtcNow;
@@ -324,25 +387,19 @@ public class GameRepository : IGameRepository
             round.CompletedAtUtc = now;
         }
 
-        // Bidraget och eventuell avslutning sparas tillsammans.
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return SubmitGameRoundStatus.Success;
     }
 
-
-
-
-
     public async Task<GameProgress?> GetProgressForUserAsync(
-    Guid matchId,
-    string userId,
-    CancellationToken cancellationToken = default)
+        Guid matchId,
+        string userId,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // Bara deltagarna får se matchningens framsteg.
         var match = await GetMatchForUserAsync(
             matchId,
             userId,
@@ -360,8 +417,6 @@ public class GameRepository : IGameRepository
                 ? match.SecondUserId
                 : match.FirstUserId;
 
-        // Jämför varje deltagares gissning med partnerns svar.
-        // Endast avslutade rundor räknas.
         var correctGuesses =
             from submission in _context.GameRoundSubmissions
             join partnerSubmission in _context.GameRoundSubmissions
@@ -369,17 +424,15 @@ public class GameRepository : IGameRepository
             where submission.Round.MatchId == matchId
                 && submission.Round.CompletedAtUtc != null
                 && (
-                    (submission.UserId == match.FirstUserId
-                        && partnerSubmission.UserId == match.SecondUserId)
-                    ||
-                    (submission.UserId == match.SecondUserId
-                        && partnerSubmission.UserId == match.FirstUserId)
+                    (submission.UserId == match.FirstUserId &&
+                     partnerSubmission.UserId == match.SecondUserId) ||
+                    (submission.UserId == match.SecondUserId &&
+                     partnerSubmission.UserId == match.FirstUserId)
                 )
-                && submission.GuessOptionId
-                    == partnerSubmission.AnswerOptionId
+                && submission.GuessOptionId ==
+                    partnerSubmission.AnswerOptionId
             select submission;
 
-        // Hämta bådas antal i samma databasfråga.
         var counts = await correctGuesses
             .GroupBy(submission => submission.UserId)
             .Select(group => new
@@ -409,5 +462,21 @@ public class GameRepository : IGameRepository
             MyCorrectGuessCount = myCount,
             PartnerCorrectGuessCount = partnerCount
         };
+    }
+
+    private Task<bool> IsBlockedBetweenUsersAsync(
+        string firstUserId,
+        string secondUserId,
+        CancellationToken cancellationToken)
+    {
+        return _context.UserBlocks
+            .AsNoTracking()
+            .AnyAsync(
+                block =>
+                    (block.BlockerUserId == firstUserId &&
+                     block.BlockedUserId == secondUserId) ||
+                    (block.BlockerUserId == secondUserId &&
+                     block.BlockedUserId == firstUserId),
+                cancellationToken);
     }
 }

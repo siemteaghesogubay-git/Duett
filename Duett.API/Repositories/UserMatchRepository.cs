@@ -32,7 +32,6 @@ public class UserMatchRepository : IUserMatchRepository
                 "En matchning kräver två olika användare.");
         }
 
-        // Samma par ska alltid sparas i samma ordning.
         if (string.CompareOrdinal(firstUserId, secondUserId) > 0)
         {
             (firstUserId, secondUserId) =
@@ -72,7 +71,6 @@ public class UserMatchRepository : IUserMatchRepository
             (sqlException.Number == 2601 ||
              sqlException.Number == 2627))
         {
-            // Ett annat anrop kan ha hunnit skapa matchningen.
             _context.Entry(newMatch).State = EntityState.Detached;
 
             var savedMatch = await _context.UserMatches
@@ -116,6 +114,11 @@ public class UserMatchRepository : IUserMatchRepository
             let otherUserId = match.FirstUserId == userId
                 ? match.SecondUserId
                 : match.FirstUserId
+            where !_context.UserBlocks.Any(block =>
+                (block.BlockerUserId == userId &&
+                 block.BlockedUserId == otherUserId) ||
+                (block.BlockerUserId == otherUserId &&
+                 block.BlockedUserId == userId))
             join profile in _context.UserProfiles.AsNoTracking()
                 on otherUserId equals profile.UserId
             select new UserMatchDetails
@@ -127,7 +130,6 @@ public class UserMatchRepository : IUserMatchRepository
                 City = profile.City,
                 CreatedAtUtc = match.CreatedAtUtc,
 
-                // Saknade partnerönskemål ger null.
                 RelationshipMode = _context.PartnerPreferences
                     .Where(preferences =>
                         preferences.UserId == otherUserId)
@@ -135,8 +137,6 @@ public class UserMatchRepository : IUserMatchRepository
                         preferences.RelationshipMode)
                     .FirstOrDefault(),
 
-                // Bara mina rätta gissningar i avslutade rundor
-                // för den aktuella matchningen räknas.
                 MyCorrectGuessCount = _context.GameRoundSubmissions
                     .Count(submission =>
                         submission.UserId == userId

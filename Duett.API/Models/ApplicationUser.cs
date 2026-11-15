@@ -7,6 +7,9 @@ public class ApplicationUser : IdentityUser
 {
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
+    [MaxLength(256)]
+    public string? AcsUserId { get; set; }
+
     [MaxLength(2048)]
     public string? ProtectedEmailVerificationCode { get; set; }
 
