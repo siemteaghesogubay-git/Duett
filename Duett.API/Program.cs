@@ -289,6 +289,47 @@ builder.Services
 
             ClockSkew = TimeSpan.FromSeconds(30)
         };
+
+        // Kontrollerar att token fortfarande tillhör ett aktivt konto.
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var userId = context.Principal?
+                    .FindFirstValue(ClaimTypes.NameIdentifier);
+
+                var tokenSecurityStamp = context.Principal?
+                    .FindFirstValue(
+                        TokenService.SecurityStampClaimType);
+
+                if (string.IsNullOrWhiteSpace(userId) ||
+                    string.IsNullOrWhiteSpace(tokenSecurityStamp))
+                {
+                    context.Fail(
+                        "Token saknar nödvändig kontoinformation.");
+
+                    return;
+                }
+
+                var userManager = context.HttpContext
+                    .RequestServices
+                    .GetRequiredService<
+                        UserManager<ApplicationUser>>();
+
+                var user = await userManager.FindByIdAsync(userId);
+
+                if (user is null ||
+                    !user.EmailConfirmed ||
+                    await userManager.IsLockedOutAsync(user) ||
+                    !string.Equals(
+                        user.SecurityStamp,
+                        tokenSecurityStamp,
+                        StringComparison.Ordinal))
+                {
+                    context.Fail("Kontot är inte aktivt.");
+                }
+            }
+        };
     });
 
 builder.Services.AddAuthorization();

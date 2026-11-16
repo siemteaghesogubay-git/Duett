@@ -10,6 +10,9 @@ namespace Duett.API.Services;
 
 public class TokenService : ITokenService
 {
+    public const string SecurityStampClaimType =
+        "duett_security_stamp";
+
     private readonly IConfiguration _configuration;
     private readonly UserManager<ApplicationUser> _userManager;
 
@@ -28,7 +31,6 @@ public class TokenService : ITokenService
         var issuer = GetRequiredSetting("Jwt:Issuer");
         var audience = GetRequiredSetting("Jwt:Audience");
 
-        // Nyckeln i User Secrets är Base64-kodad.
         var keyBytes = Convert.FromBase64String(key);
 
         if (keyBytes.Length < 32)
@@ -46,6 +48,14 @@ public class TokenService : ITokenService
                 "Jwt:AccessTokenMinutes måste vara mellan 1 och 15.");
         }
 
+        var securityStamp = user.SecurityStamp;
+
+        if (string.IsNullOrWhiteSpace(securityStamp))
+        {
+            throw new InvalidOperationException(
+                "Användaren saknar en säkerhetsstämpel.");
+        }
+
         var now = DateTime.UtcNow;
         var expiresAtUtc = now.AddMinutes(minutes);
 
@@ -57,10 +67,13 @@ public class TokenService : ITokenService
 
             new Claim(
                 JwtRegisteredClaimNames.Jti,
-                Guid.NewGuid().ToString())
+                Guid.NewGuid().ToString()),
+
+            new Claim(
+                SecurityStampClaimType,
+                securityStamp)
         };
 
-        // Roller hämtas från databasen, inte från klienten.
         var roles = await _userManager.GetRolesAsync(user);
 
         foreach (var role in roles)

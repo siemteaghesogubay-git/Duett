@@ -20,4 +20,19 @@ public interface IAdminService
         string adminUserId,
         ReviewUserReportDto dto,
         CancellationToken cancellationToken = default);
+
+    Task<bool> DeactivateUserAsync(
+        string userId,
+        string adminUserId,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> ReactivateUserAsync(
+        string userId,
+        string adminUserId,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> DeleteUserAsync(
+        string userId,
+        string adminUserId,
+        CancellationToken cancellationToken = default);
 }

@@ -120,6 +120,145 @@ public class AdminRepository : IAdminRepository
             cancellationToken);
     }
 
+    public Task<ProfilePhoto?> GetProfilePhotoAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        return _context.ProfilePhotos
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                photo => photo.UserId == userId,
+                cancellationToken);
+    }
+
+    public async Task<bool> DeleteUserAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await _context.Database
+            .BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var user = await _context.Users.SingleOrDefaultAsync(
+                currentUser => currentUser.Id == userId,
+                cancellationToken);
+
+            if (user is null)
+            {
+                await transaction.RollbackAsync(
+                    CancellationToken.None);
+
+                return false;
+            }
+
+            var matchIds = _context.UserMatches
+                .Where(match =>
+                    match.FirstUserId == userId ||
+                    match.SecondUserId == userId)
+                .Select(match => match.Id);
+
+            var roundIds = _context.GameRounds
+                .Where(round => matchIds.Contains(round.MatchId))
+                .Select(round => round.Id);
+
+            // Rensa beroenden till spelrundor före rundor och matchningar.
+            await _context.GameRoundSubmissions
+                .Where(submission =>
+                    submission.UserId == userId ||
+                    roundIds.Contains(submission.RoundId))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await _context.ChatMessages
+                .Where(message =>
+                    message.SenderUserId == userId ||
+                    matchIds.Contains(message.MatchId))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await _context.MatchQuestions
+                .Where(question =>
+                    question.AskedByUserId == userId ||
+                    question.AnsweredByUserId == userId ||
+                    matchIds.Contains(question.MatchId))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await _context.GameRounds
+                .Where(round => matchIds.Contains(round.MatchId))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await _context.UserMatches
+                .Where(match =>
+                    match.FirstUserId == userId ||
+                    match.SecondUserId == userId)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            // Behåll rapporter som enbart granskats av användaren,
+            // men öppna dem igen när granskaren försvinner.
+            await _context.UserReports
+                .Where(report => report.ReviewedByUserId == userId)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(
+                            report => report.ReviewedByUserId,
+                            (string?)null)
+                        .SetProperty(
+                            report => report.ReviewNote,
+                            (string?)null)
+                        .SetProperty(
+                            report => report.ReviewedAtUtc,
+                            (DateTime?)null)
+                        .SetProperty(
+                            report => report.Status,
+                            UserReportStatus.Open),
+                    cancellationToken);
+
+            // Ta bort rapporter där användaren är anmälare eller anmäld.
+            await _context.UserReports
+                .Where(report =>
+                    report.ReporterUserId == userId ||
+                    report.ReportedUserId == userId)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await _context.UserBlocks
+                .Where(block =>
+                    block.BlockerUserId == userId ||
+                    block.BlockedUserId == userId)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await _context.ProfileLikes
+                .Where(like =>
+                    like.FromUserId == userId ||
+                    like.ToUserId == userId)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await _context.ProfilePhotos
+                .Where(photo => photo.UserId == userId)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await _context.PartnerPreferences
+                .Where(preferences => preferences.UserId == userId)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await _context.UserProfiles
+                .Where(profile => profile.UserId == userId)
+                .ExecuteDeleteAsync(cancellationToken);
+
+            // Identity-tabeller som roller, claims och tokens rensas
+            // genom Identitys befintliga relationer.
+            _context.Users.Remove(user);
+
+            await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            return true;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
     public async Task SaveChangesAsync(
         CancellationToken cancellationToken = default)
     {

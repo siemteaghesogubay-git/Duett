@@ -1,18 +1,35 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using Azure.Communication;
+using Azure.Communication.Identity;
 using Duett.API.Dtos;
 using Duett.API.Models;
 using Duett.API.Repositories.IRepositories;
 using Duett.API.Services.IServices;
+using Duett.API.Storage.IStorage;
+using Microsoft.AspNetCore.Identity;
 
 namespace Duett.API.Services;
 
 public class AdminService : IAdminService
 {
     private readonly IAdminRepository _repository;
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IPrivatePhotoStorage _photoStorage;
+    private readonly CommunicationIdentityClient _identityClient;
+    private readonly ILogger<AdminService> _logger;
 
-    public AdminService(IAdminRepository repository)
+    public AdminService(
+        IAdminRepository repository,
+        UserManager<ApplicationUser> userManager,
+        IPrivatePhotoStorage photoStorage,
+        CommunicationIdentityClient identityClient,
+        ILogger<AdminService> logger)
     {
         _repository = repository;
+        _userManager = userManager;
+        _photoStorage = photoStorage;
+        _identityClient = identityClient;
+        _logger = logger;
     }
 
     public async Task<List<AdminUserResponseDto>> GetUsersAsync(
@@ -143,6 +160,217 @@ public class AdminService : IAdminService
         await _repository.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    public async Task<bool> DeactivateUserAsync(
+        string userId,
+        string adminUserId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminUserId);
+
+        var user = await _userManager.FindByIdAsync(userId);
+
+        if (user is null)
+        {
+            return false;
+        }
+
+        await EnsureUserCanBeDisabledOrDeletedAsync(
+            user,
+            adminUserId);
+
+        if (!user.LockoutEnabled)
+        {
+            user.LockoutEnabled = true;
+
+            EnsureIdentitySucceeded(
+                await _userManager.UpdateAsync(user),
+                "Kunde inte aktivera kontolåsning.");
+        }
+
+        EnsureIdentitySucceeded(
+            await _userManager.SetLockoutEndDateAsync(
+                user,
+                DateTimeOffset.MaxValue),
+            "Kunde inte avaktivera kontot.");
+
+        EnsureIdentitySucceeded(
+            await _userManager.UpdateSecurityStampAsync(user),
+            "Kunde inte uppdatera kontots säkerhetsinformation.");
+
+        return true;
+    }
+
+    public async Task<bool> ReactivateUserAsync(
+        string userId,
+        string adminUserId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminUserId);
+
+        var user = await _userManager.FindByIdAsync(userId);
+
+        if (user is null)
+        {
+            return false;
+        }
+
+        if (user.Id == adminUserId)
+        {
+            throw new ValidationException(
+                "Du kan inte ändra status på ditt eget konto.");
+        }
+
+        EnsureIdentitySucceeded(
+            await _userManager.SetLockoutEndDateAsync(user, null),
+            "Kunde inte återaktivera kontot.");
+
+        EnsureIdentitySucceeded(
+            await _userManager.ResetAccessFailedCountAsync(user),
+            "Kunde inte återställa inloggningsförsök.");
+
+        EnsureIdentitySucceeded(
+            await _userManager.UpdateSecurityStampAsync(user),
+            "Kunde inte uppdatera kontots säkerhetsinformation.");
+
+        return true;
+    }
+
+    public async Task<bool> DeleteUserAsync(
+        string userId,
+        string adminUserId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminUserId);
+
+        var user = await _userManager.FindByIdAsync(userId);
+
+        if (user is null)
+        {
+            return false;
+        }
+
+        await EnsureUserCanBeDisabledOrDeletedAsync(
+            user,
+            adminUserId);
+
+        var profilePhoto = await _repository.GetProfilePhotoAsync(
+            userId,
+            cancellationToken);
+
+        var acsUserId = user.AcsUserId;
+
+        var wasDeleted = await _repository.DeleteUserAsync(
+            userId,
+            cancellationToken);
+
+        if (!wasDeleted)
+        {
+            return false;
+        }
+
+        await DeleteProfilePhotoAsync(
+            profilePhoto,
+            cancellationToken);
+
+        await DeleteCallingIdentityAsync(
+            acsUserId,
+            userId,
+            cancellationToken);
+
+        return true;
+    }
+
+    private async Task EnsureUserCanBeDisabledOrDeletedAsync(
+        ApplicationUser user,
+        string adminUserId)
+    {
+        if (user.Id == adminUserId)
+        {
+            throw new ValidationException(
+                "Du kan inte ändra eller radera ditt eget konto.");
+        }
+
+        if (!await _userManager.IsInRoleAsync(user, "ADMIN"))
+        {
+            return;
+        }
+
+        var administrators = await _userManager
+            .GetUsersInRoleAsync("ADMIN");
+
+        if (administrators.Count <= 1)
+        {
+            throw new ValidationException(
+                "Det går inte att ändra eller radera den sista administratören.");
+        }
+    }
+
+    private async Task DeleteProfilePhotoAsync(
+        ProfilePhoto? profilePhoto,
+        CancellationToken cancellationToken)
+    {
+        if (profilePhoto is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _photoStorage.DeleteAsync(
+                profilePhoto.StorageKey,
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                exception,
+                "Kunde inte radera profilbilden {StorageKey} efter " +
+                "att användaren har raderats.",
+                profilePhoto.StorageKey);
+        }
+    }
+
+    private async Task DeleteCallingIdentityAsync(
+        string? acsUserId,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(acsUserId))
+        {
+            return;
+        }
+
+        try
+        {
+            var communicationUser =
+                new CommunicationUserIdentifier(acsUserId);
+
+            await _identityClient.DeleteUserAsync(
+                communicationUser,
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                exception,
+                "Kunde inte radera samtalsidentiteten för användare {UserId}.",
+                userId);
+        }
+    }
+
+    private static void EnsureIdentitySucceeded(
+        IdentityResult result,
+        string errorMessage)
+    {
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException(errorMessage);
+        }
     }
 
     private static int CalculateSkip(

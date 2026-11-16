@@ -19,7 +19,14 @@ public interface IAdminRepository
         Guid reportId,
         CancellationToken cancellationToken = default);
 
-    Task SaveChangesAsync(
+    Task<ProfilePhoto?> GetProfilePhotoAsync(
+        string userId,
         CancellationToken cancellationToken = default);
 
+    Task<bool> DeleteUserAsync(
+        string userId,
+        CancellationToken cancellationToken = default);
+
+    Task SaveChangesAsync(
+        CancellationToken cancellationToken = default);
 }
