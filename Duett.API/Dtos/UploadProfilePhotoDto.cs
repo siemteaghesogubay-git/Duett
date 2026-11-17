@@ -13,6 +13,10 @@ public class UploadProfilePhotoDto
 
 public class ProfilePhotoResponseDto
 {
+    public Guid Id { get; set; }
+
+    public int SortOrder { get; set; }
+
     public string ContentType { get; set; } = string.Empty;
 
     public long SizeBytes { get; set; }

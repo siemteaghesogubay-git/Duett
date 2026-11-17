@@ -10,6 +10,10 @@ public interface IProfilePhotoService
         UploadProfilePhotoDto dto,
         CancellationToken cancellationToken = default);
 
+    Task<List<ProfilePhotoResponseDto>> GetMyPhotosAsync(
+        string userId,
+        CancellationToken cancellationToken = default);
+
     Task<(
         ProfilePhotoStatus Status,
         ProfilePhotoFile? File)> GetMyPhotoAsync(
@@ -18,8 +22,34 @@ public interface IProfilePhotoService
 
     Task<(
         ProfilePhotoStatus Status,
+        ProfilePhotoFile? File)> GetMyPhotoAsync(
+        string userId,
+        Guid photoId,
+        CancellationToken cancellationToken = default);
+
+    Task<(
+        ProfilePhotoStatus Status,
         ProfilePhotoFile? File)> GetPartnerPhotoAsync(
         Guid matchId,
         string userId,
         CancellationToken cancellationToken = default);
+
+    Task<(
+        ProfilePhotoStatus Status,
+        ProfilePhotoFile? File)> GetPartnerPhotoAsync(
+        Guid matchId,
+        string userId,
+        Guid photoId,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> DeleteAsync(
+        string userId,
+        Guid photoId,
+        CancellationToken cancellationToken = default);
+
+
+    Task<bool> SetPrimaryAsync(
+    string userId,
+    Guid photoId,
+    CancellationToken cancellationToken = default);
 }

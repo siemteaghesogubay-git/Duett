@@ -9,6 +9,8 @@ namespace Duett.API.Services;
 
 public class ProfilePhotoService : IProfilePhotoService
 {
+    private const int MaxPhotos = 6;
+
     private readonly IProfilePhotoRepository _repository;
     private readonly IProfilePhotoProcessor _processor;
     private readonly IPrivatePhotoStorage _storage;
@@ -38,14 +40,14 @@ public class ProfilePhotoService : IProfilePhotoService
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentNullException.ThrowIfNull(dto);
 
         if (dto.File is null)
         {
             throw new ValidationException(
-                "Välj en profilbild.");
+                "Choose a profile photo.");
         }
 
-        // Validera och skapa en ny JPEG utan originalets metadata.
         var processed = await _processor.ProcessAsync(
             dto.File,
             cancellationToken);
@@ -54,77 +56,145 @@ public class ProfilePhotoService : IProfilePhotoService
             processed.Content,
             writable: false);
 
-        // Filen måste finnas innan databasen börjar peka på den.
         var storageKey = await _storage.SaveAsync(
             content,
             cancellationToken);
 
-        (string? PreviousStorageKey, DateTime UploadedAtUtc) saved;
+        ProfilePhoto? savedPhoto;
 
         try
         {
-            saved = await _repository.ReplaceAsync(
+            savedPhoto = await _repository.AddAsync(
                 userId,
                 storageKey,
                 processed.ContentType,
                 processed.SizeBytes,
+                MaxPhotos,
                 cancellationToken);
         }
         catch (Exception ex)
         {
-            // Vid ett anslutningsfel kan commit ha lyckats
-            // trots att anropet rapporterar ett fel.
-            // Radera därför inte den nya filen här.
             _logger.LogError(
                 ex,
-                "Databasuppdateringen för profilbilden kunde inte " +
-                "bekräftas. Fil {StorageKey} behålls för avstämning.",
+                "Could not save profile photo {StorageKey}.",
                 storageKey);
 
             throw;
         }
 
-        // Databasen pekar nu på den nya bilden.
-        if (saved.PreviousStorageKey is string previousKey &&
-            previousKey != storageKey)
+        if (savedPhoto is null)
         {
-            await TryDeleteOldPhotoAsync(previousKey);
+            await TryDeleteStorageAsync(storageKey);
+
+            throw new ValidationException(
+                $"You can upload a maximum of {MaxPhotos} profile photos.");
         }
 
-        return new ProfilePhotoResponseDto
-        {
-            ContentType = processed.ContentType,
-            SizeBytes = processed.SizeBytes,
-            UploadedAtUtc = new DateTimeOffset(
-                DateTime.SpecifyKind(
-                    saved.UploadedAtUtc,
-                    DateTimeKind.Utc))
-        };
+        return MapToResponse(savedPhoto);
     }
 
-    public async Task<(
-        ProfilePhotoStatus Status,
-        ProfilePhotoFile? File)> GetMyPhotoAsync(
+    public async Task<List<ProfilePhotoResponseDto>> GetMyPhotosAsync(
         string userId,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        return await OpenPhotoAsync(
+        var photos = await _repository.GetByUserIdAsync(
             userId,
+            cancellationToken);
+
+        return photos
+            .Select(MapToResponse)
+            .ToList();
+    }
+
+    public Task<(
+        ProfilePhotoStatus Status,
+        ProfilePhotoFile? File)> GetMyPhotoAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        return OpenPhotoAsync(
+            userId,
+            photoId: null,
             cancellationToken);
     }
 
-    public async Task<(
+    public Task<(
+        ProfilePhotoStatus Status,
+        ProfilePhotoFile? File)> GetMyPhotoAsync(
+        string userId,
+        Guid photoId,
+        CancellationToken cancellationToken = default)
+    {
+        return OpenPhotoAsync(
+            userId,
+            photoId,
+            cancellationToken);
+    }
+
+    public Task<(
         ProfilePhotoStatus Status,
         ProfilePhotoFile? File)> GetPartnerPhotoAsync(
         Guid matchId,
         string userId,
         CancellationToken cancellationToken = default)
     {
+        return GetPartnerPhotoCoreAsync(
+            matchId,
+            userId,
+            photoId: null,
+            cancellationToken);
+    }
+
+    public Task<(
+        ProfilePhotoStatus Status,
+        ProfilePhotoFile? File)> GetPartnerPhotoAsync(
+        Guid matchId,
+        string userId,
+        Guid photoId,
+        CancellationToken cancellationToken = default)
+    {
+        return GetPartnerPhotoCoreAsync(
+            matchId,
+            userId,
+            photoId,
+            cancellationToken);
+    }
+
+    public async Task<bool> DeleteAsync(
+        string userId,
+        Guid photoId,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        // Kontrollerar att den inloggade användaren är deltagare.
+        var deletedPhoto = await _repository.DeleteAsync(
+            userId,
+            photoId,
+            cancellationToken);
+
+        if (deletedPhoto is null)
+        {
+            return false;
+        }
+
+        await TryDeleteStorageAsync(
+            deletedPhoto.StorageKey);
+
+        return true;
+    }
+
+    private async Task<(
+        ProfilePhotoStatus Status,
+        ProfilePhotoFile? File)> GetPartnerPhotoCoreAsync(
+        Guid matchId,
+        string userId,
+        Guid? photoId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
         var match = await _gameRepository.GetMatchForUserAsync(
             matchId,
             userId,
@@ -135,7 +205,6 @@ public class ProfilePhotoService : IProfilePhotoService
             return (ProfilePhotoStatus.MatchNotFound, null);
         }
 
-        // Kräver nivå 3 för båda och tre besvarade frågor var.
         var progress = await _questionService.GetProgressAsync(
             matchId,
             userId,
@@ -151,7 +220,6 @@ public class ProfilePhotoService : IProfilePhotoService
             return (ProfilePhotoStatus.PhotosLocked, null);
         }
 
-        // Partnerns ID bestäms av backend.
         var partnerUserId = string.Equals(
             match.FirstUserId,
             userId,
@@ -161,6 +229,7 @@ public class ProfilePhotoService : IProfilePhotoService
 
         return await OpenPhotoAsync(
             partnerUserId,
+            photoId,
             cancellationToken);
     }
 
@@ -168,11 +237,16 @@ public class ProfilePhotoService : IProfilePhotoService
         ProfilePhotoStatus Status,
         ProfilePhotoFile? File)> OpenPhotoAsync(
         string ownerUserId,
+        Guid? photoId,
         CancellationToken cancellationToken)
     {
-        var photo = await _repository.GetByUserIdAsync(
+        var photos = await _repository.GetByUserIdAsync(
             ownerUserId,
             cancellationToken);
+
+        var photo = photoId.HasValue
+            ? photos.SingleOrDefault(item => item.Id == photoId.Value)
+            : photos.FirstOrDefault();
 
         if (photo is null)
         {
@@ -188,7 +262,6 @@ public class ProfilePhotoService : IProfilePhotoService
             return (ProfilePhotoStatus.PhotoNotFound, null);
         }
 
-        // Strömmen lämnas öppen för controllerns filrespons.
         return (
             ProfilePhotoStatus.Success,
             new ProfilePhotoFile
@@ -198,12 +271,11 @@ public class ProfilePhotoService : IProfilePhotoService
             });
     }
 
-    private async Task TryDeleteOldPhotoAsync(string storageKey)
+    private async Task TryDeleteStorageAsync(
+        string storageKey)
     {
         try
         {
-            // Uppladdningen är redan sparad.
-            // Städningen ska inte avbrytas av klientens frånkoppling.
             await _storage.DeleteAsync(
                 storageKey,
                 CancellationToken.None);
@@ -212,15 +284,47 @@ public class ProfilePhotoService : IProfilePhotoService
         {
             _logger.LogWarning(
                 ex,
-                "Den gamla profilbilden {StorageKey} kunde inte tas bort.",
+                "Could not delete photo file {StorageKey}.",
                 storageKey);
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(
                 ex,
-                "Åtkomst saknas för att ta bort profilbilden {StorageKey}.",
+                "Access denied when deleting photo file {StorageKey}.",
                 storageKey);
         }
+    }
+
+    private static ProfilePhotoResponseDto MapToResponse(
+        ProfilePhoto photo)
+    {
+        return new ProfilePhotoResponseDto
+        {
+            Id = photo.Id,
+            SortOrder = photo.SortOrder,
+            ContentType = photo.ContentType,
+            SizeBytes = photo.SizeBytes,
+            UploadedAtUtc = new DateTimeOffset(
+                DateTime.SpecifyKind(
+                    photo.UploadedAtUtc,
+                    DateTimeKind.Utc))
+        };
+    }
+
+
+
+
+        public async Task<bool> SetPrimaryAsync(
+    string userId,
+    Guid photoId,
+    CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        return await _repository.SetPrimaryAsync(
+            userId,
+            photoId,
+            cancellationToken);
     }
 }

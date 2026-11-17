@@ -396,9 +396,9 @@ namespace Duett.API.Migrations
 
             modelBuilder.Entity("Duett.API.Models.ProfilePhoto", b =>
                 {
-                    b.Property<string>("UserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("ContentType")
                         .IsRequired()
@@ -408,6 +408,9 @@ namespace Duett.API.Migrations
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
                     b.Property<string>("StorageKey")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -416,15 +419,17 @@ namespace Duett.API.Migrations
                     b.Property<DateTime>("UploadedAtUtc")
                         .HasColumnType("datetime2");
 
-                    b.HasKey("UserId");
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
-                    b.HasIndex("StorageKey")
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "SortOrder")
                         .IsUnique();
 
-                    b.ToTable("ProfilePhotos", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_ProfilePhotos_SizeBytes", "[SizeBytes] > 0");
-                        });
+                    b.ToTable("ProfilePhotos");
                 });
 
             modelBuilder.Entity("Duett.API.Models.UserBlock", b =>
@@ -835,9 +840,9 @@ namespace Duett.API.Migrations
             modelBuilder.Entity("Duett.API.Models.ProfilePhoto", b =>
                 {
                     b.HasOne("Duett.API.Models.ApplicationUser", "User")
-                        .WithOne()
-                        .HasForeignKey("Duett.API.Models.ProfilePhoto", "UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
+                        .WithMany("ProfilePhotos")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("User");
@@ -974,6 +979,11 @@ namespace Duett.API.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Duett.API.Models.ApplicationUser", b =>
+                {
+                    b.Navigation("ProfilePhotos");
                 });
 
             modelBuilder.Entity("Duett.API.Models.GameQuestion", b =>

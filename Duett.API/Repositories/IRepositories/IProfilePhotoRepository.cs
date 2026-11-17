@@ -4,18 +4,31 @@ namespace Duett.API.Repositories.IRepositories;
 
 public interface IProfilePhotoRepository
 {
-    Task<ProfilePhoto?> GetByUserIdAsync(
+    Task<List<ProfilePhoto>> GetByUserIdAsync(
         string userId,
         CancellationToken cancellationToken = default);
 
-    // Returnerar den gamla bildens lagringsnyckel
-    // och den nya bildens sparade uppladdningstid.
-    Task<(
-        string? PreviousStorageKey,
-        DateTime UploadedAtUtc)> ReplaceAsync(
+    Task<ProfilePhoto?> GetByIdAsync(
+        string userId,
+        Guid photoId,
+        CancellationToken cancellationToken = default);
+
+    Task<ProfilePhoto?> AddAsync(
         string userId,
         string storageKey,
         string contentType,
         long sizeBytes,
+        int maxPhotos,
         CancellationToken cancellationToken = default);
+
+    Task<ProfilePhoto?> DeleteAsync(
+        string userId,
+        Guid photoId,
+        CancellationToken cancellationToken = default);
+
+
+    Task<bool> SetPrimaryAsync(
+       string userId,
+       Guid photoId,
+       CancellationToken cancellationToken = default);
 }

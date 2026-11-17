@@ -41,7 +41,8 @@ public class ApplicationDbContext
     public DbSet<MatchQuestion> MatchQuestions
         => Set<MatchQuestion>();
 
-    public DbSet<ProfilePhoto> ProfilePhotos => Set<ProfilePhoto>();
+    public DbSet<ProfilePhoto> ProfilePhotos
+        => Set<ProfilePhoto>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -63,10 +64,17 @@ public class ApplicationDbContext
                 .HasForeignKey<UserProfile>(p => p.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            profile.Property(p => p.DisplayName).IsRequired();
-            profile.Property(p => p.Gender).IsRequired();
-            profile.Property(p => p.City).IsRequired();
-            profile.Property(p => p.Bio).IsRequired();
+            profile.Property(p => p.DisplayName)
+                .IsRequired();
+
+            profile.Property(p => p.Gender)
+                .IsRequired();
+
+            profile.Property(p => p.City)
+                .IsRequired();
+
+            profile.Property(p => p.Bio)
+                .IsRequired();
         });
 
         // Partnerönskemål.
@@ -164,7 +172,7 @@ public class ApplicationDbContext
             });
         });
 
-        // Anmälningar som administratörer kan granska.
+        // Anmälningar.
         builder.Entity<UserReport>(report =>
         {
             report.HasKey(r => r.Id);
@@ -474,10 +482,10 @@ public class ApplicationDbContext
             });
         });
 
-        // Profilbilder.
+        // Flera profilbilder per användare.
         builder.Entity<ProfilePhoto>(photo =>
         {
-            photo.HasKey(p => p.UserId);
+            photo.HasKey(p => p.Id);
 
             photo.Property(p => p.UserId)
                 .HasMaxLength(450)
@@ -491,20 +499,22 @@ public class ApplicationDbContext
                 .HasMaxLength(50)
                 .IsRequired();
 
+            photo.Property(p => p.SizeBytes)
+                .IsRequired();
+
+            photo.Property(p => p.SortOrder)
+                .IsRequired();
+
             photo.HasOne(p => p.User)
-                .WithOne()
-                .HasForeignKey<ProfilePhoto>(p => p.UserId)
-                .OnDelete(DeleteBehavior.NoAction);
+                .WithMany(user => user.ProfilePhotos)
+                .HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
-            photo.HasIndex(p => p.StorageKey)
-                .IsUnique();
-
-            photo.ToTable("ProfilePhotos", table =>
+            photo.HasIndex(p => new
             {
-                table.HasCheckConstraint(
-                    "CK_ProfilePhotos_SizeBytes",
-                    "[SizeBytes] > 0");
-            });
+                p.UserId,
+                p.SortOrder
+            }).IsUnique();
         });
     }
 }

@@ -5,7 +5,8 @@ namespace Duett.API.Models;
 
 public class ApplicationUser : IdentityUser
 {
-    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAtUtc { get; set; } =
+        DateTime.UtcNow;
 
     [MaxLength(256)]
     public string? AcsUserId { get; set; }
@@ -18,4 +19,7 @@ public class ApplicationUser : IdentityUser
     public int EmailVerificationFailedAttempts { get; set; }
 
     public DateTime? EmailVerificationNextSendAtUtc { get; set; }
+
+    public ICollection<ProfilePhoto> ProfilePhotos { get; set; } =
+        new List<ProfilePhoto>();
 }
