@@ -8,11 +8,19 @@ namespace Duett.API.Repositories;
 public class MatchRepository : IMatchRepository
 {
     private readonly ApplicationDbContext _context;
+    private readonly IConfiguration _configuration;
 
-    public MatchRepository(ApplicationDbContext context)
+    public MatchRepository(
+        ApplicationDbContext context,
+        IConfiguration configuration)
     {
         _context = context;
+        _configuration = configuration;
     }
+
+    private bool ShowAllUsers =>
+        _configuration.GetValue<bool>(
+            "Matching:ShowAllUsers");
 
     public async Task<List<UserProfile>> GetSuggestionsAsync(
         string userId,
@@ -31,6 +39,23 @@ public class MatchRepository : IMatchRepository
             throw new ArgumentOutOfRangeException(nameof(take));
         }
 
+        if (ShowAllUsers)
+        {
+            return await _context.UserProfiles
+                .AsNoTracking()
+                .Where(profile =>
+                    profile.UserId != userId &&
+                    !_context.UserBlocks.Any(block =>
+                        (block.BlockerUserId == userId &&
+                         block.BlockedUserId == profile.UserId) ||
+                        (block.BlockerUserId == profile.UserId &&
+                         block.BlockedUserId == userId)))
+                .OrderBy(profile => profile.UserId)
+                .Skip(skip)
+                .Take(take)
+                .ToListAsync(cancellationToken);
+        }
+
         var myProfile = await _context.UserProfiles
             .AsNoTracking()
             .SingleOrDefaultAsync(
@@ -45,63 +70,48 @@ public class MatchRepository : IMatchRepository
 
         if (myProfile is null || myPreferences is null)
         {
-            return new List<UserProfile>();
+            return [];
         }
 
-        var myAge = today.Year - myProfile.DateOfBirth.Year;
-
-        if (myProfile.DateOfBirth.Month > today.Month ||
-            (myProfile.DateOfBirth.Month == today.Month &&
-             myProfile.DateOfBirth.Day > today.Day))
-        {
-            myAge--;
-        }
+        var myAge = CalculateAge(
+            myProfile.DateOfBirth,
+            today);
 
         if (myAge < 18)
         {
-            return new List<UserProfile>();
+            return [];
         }
 
-        var youngestBirthDate = today.AddYears(-myPreferences.MinAge);
+        var youngestBirthDate =
+            today.AddYears(-myPreferences.MinAge);
+
         var oldestBirthDateExclusive =
             today.AddYears(-(myPreferences.MaxAge + 1));
-
-        var preferredGenders = myPreferences.PreferredGenders;
-        var preferredCity = myPreferences.PreferredCity;
-        var relationshipGoal = myPreferences.RelationshipGoal;
-
-        var myGender = myProfile.Gender;
-        var myCity = myProfile.City;
 
         var query =
             from profile in _context.UserProfiles.AsNoTracking()
             join preferences in _context.PartnerPreferences.AsNoTracking()
                 on profile.UserId equals preferences.UserId
             where profile.UserId != userId
-
-                // En blockering gäller åt båda håll.
                 && !_context.UserBlocks.Any(block =>
                     (block.BlockerUserId == userId &&
                      block.BlockedUserId == profile.UserId) ||
                     (block.BlockerUserId == profile.UserId &&
                      block.BlockedUserId == userId))
-
-                // Personen uppfyller mina önskemål.
                 && profile.DateOfBirth > oldestBirthDateExclusive
                 && profile.DateOfBirth <= youngestBirthDate
-                && preferredGenders.Contains(profile.Gender)
-                && (preferredCity == null ||
-                    profile.City == preferredCity)
-
-                // Jag uppfyller personens önskemål.
+                && myPreferences.PreferredGenders
+                    .Contains(profile.Gender)
+                && (myPreferences.PreferredCity == null ||
+                    profile.City == myPreferences.PreferredCity)
                 && preferences.MinAge <= myAge
                 && preferences.MaxAge >= myAge
-                && preferences.PreferredGenders.Contains(myGender)
+                && preferences.PreferredGenders
+                    .Contains(myProfile.Gender)
                 && (preferences.PreferredCity == null ||
-                    preferences.PreferredCity == myCity)
-
-                // Båda söker samma typ av relation.
-                && preferences.RelationshipGoal == relationshipGoal
+                    preferences.PreferredCity == myProfile.City)
+                && preferences.RelationshipGoal ==
+                    myPreferences.RelationshipGoal
             select profile;
 
         return await query
@@ -122,6 +132,20 @@ public class MatchRepository : IMatchRepository
             return false;
         }
 
+        if (ShowAllUsers)
+        {
+            return await _context.UserProfiles
+                .AsNoTracking()
+                .Where(profile =>
+                    profile.UserId == otherUserId &&
+                    !_context.UserBlocks.Any(block =>
+                        (block.BlockerUserId == userId &&
+                         block.BlockedUserId == otherUserId) ||
+                        (block.BlockerUserId == otherUserId &&
+                         block.BlockedUserId == userId)))
+                .AnyAsync(cancellationToken);
+        }
+
         var myProfile = await _context.UserProfiles
             .AsNoTracking()
             .SingleOrDefaultAsync(
@@ -139,61 +163,63 @@ public class MatchRepository : IMatchRepository
             return false;
         }
 
-        var myAge = today.Year - myProfile.DateOfBirth.Year;
-
-        if (myProfile.DateOfBirth.Month > today.Month ||
-            (myProfile.DateOfBirth.Month == today.Month &&
-             myProfile.DateOfBirth.Day > today.Day))
-        {
-            myAge--;
-        }
+        var myAge = CalculateAge(
+            myProfile.DateOfBirth,
+            today);
 
         if (myAge < 18)
         {
             return false;
         }
 
-        var youngestBirthDate = today.AddYears(-myPreferences.MinAge);
+        var youngestBirthDate =
+            today.AddYears(-myPreferences.MinAge);
+
         var oldestBirthDateExclusive =
             today.AddYears(-(myPreferences.MaxAge + 1));
-
-        var preferredGenders = myPreferences.PreferredGenders;
-        var preferredCity = myPreferences.PreferredCity;
-        var relationshipGoal = myPreferences.RelationshipGoal;
-
-        var myGender = myProfile.Gender;
-        var myCity = myProfile.City;
 
         var query =
             from profile in _context.UserProfiles.AsNoTracking()
             join preferences in _context.PartnerPreferences.AsNoTracking()
                 on profile.UserId equals preferences.UserId
             where profile.UserId == otherUserId
-
-                // En blockering stoppar även direkta likes.
                 && !_context.UserBlocks.Any(block =>
                     (block.BlockerUserId == userId &&
                      block.BlockedUserId == profile.UserId) ||
                     (block.BlockerUserId == profile.UserId &&
                      block.BlockedUserId == userId))
-
-                // Den andra personen uppfyller mina önskemål.
                 && profile.DateOfBirth > oldestBirthDateExclusive
                 && profile.DateOfBirth <= youngestBirthDate
-                && preferredGenders.Contains(profile.Gender)
-                && (preferredCity == null ||
-                    profile.City == preferredCity)
-
-                // Jag uppfyller den andra personens önskemål.
+                && myPreferences.PreferredGenders
+                    .Contains(profile.Gender)
+                && (myPreferences.PreferredCity == null ||
+                    profile.City == myPreferences.PreferredCity)
                 && preferences.MinAge <= myAge
                 && preferences.MaxAge >= myAge
-                && preferences.PreferredGenders.Contains(myGender)
+                && preferences.PreferredGenders
+                    .Contains(myProfile.Gender)
                 && (preferences.PreferredCity == null ||
-                    preferences.PreferredCity == myCity)
-
-                && preferences.RelationshipGoal == relationshipGoal
+                    preferences.PreferredCity == myProfile.City)
+                && preferences.RelationshipGoal ==
+                    myPreferences.RelationshipGoal
             select profile.UserId;
 
         return await query.AnyAsync(cancellationToken);
+    }
+
+    private static int CalculateAge(
+        DateOnly dateOfBirth,
+        DateOnly today)
+    {
+        var age = today.Year - dateOfBirth.Year;
+
+        if (dateOfBirth.Month > today.Month ||
+            (dateOfBirth.Month == today.Month &&
+             dateOfBirth.Day > today.Day))
+        {
+            age--;
+        }
+
+        return age;
     }
 }
